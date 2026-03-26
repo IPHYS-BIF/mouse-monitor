@@ -238,6 +238,10 @@ class CameraWorker(QThread):
     def run(self):
         source = self.video_path if self.video_path else self.camera_index
         capture = cv2.VideoCapture(source)
+
+        isVideoFile = bool(self.video_path)
+        videoFps = capture.get(cv2.CAP_PROP_FPS) if isVideoFile else 0.0
+        processedFrameCount = 0
         
         estimator = BreathEstimator()
         roiState = None
@@ -250,10 +254,15 @@ class CameraWorker(QThread):
                     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
                 break
+            processedFrameCount += 1
 
-            nowTime = time.perf_counter() - runStartTime
-            grayFrame = frame[:, :, 2].copy() # Red channel for IR
-            
+            if isVideoFile and videoFps > 0:
+                nowTime = processedFrameCount / videoFps
+            else:
+                nowTime = time.perf_counter() - runStartTime
+
+            grayFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
             # --- HYBRID TRACKING ---
             if roiState is None:
                 self.status_updated.emit("SEARCHING FOR TARGET...")
@@ -286,7 +295,7 @@ class CameraWorker(QThread):
             self.frame_ready.emit(qt_image)
             
             if self.test_mode and self.video_path:
-                self.msleep(30) # Prevent video from playing at 1000 FPS
+                self.msleep(15) # Prevent video from playing at 1000 FPS
 
         capture.release()
 
@@ -387,12 +396,13 @@ class MouseTrackerDashboard(QMainWindow):
 
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setBackground('#f7f9fb')
+        self.plot_widget.showAxis('bottom')
+        self.plot_widget.setLabel('bottom', "Time", units="s")
+        self.plot_widget.hideAxis('left')
+        self.plot_widget.setMouseEnabled(x=False, y=False)
         self.motion_data = collections.deque(maxlen=150)
-
         self.bpm_curve = self.plot_widget.plot(
-            pen=pg.mkPen(color='#005db5', width=3),
-            fillLevel=0,
-            fillBrush=pg.mkBrush(0, 93, 181, 40)
+            pen=pg.mkPen(color='#005db5', width=3)
         )
         graph_layout.addWidget(self.plot_widget)
 
@@ -438,15 +448,41 @@ class MouseTrackerDashboard(QMainWindow):
 
     def update_graph(self, motion_value):
         self.motion_data.append(motion_value)
-        self.bpm_curve.setData(list(self.motion_data))
+        num_points = len(self.motion_data)
+        x_data = np.linspace(-num_points / 30.0, 0.0, num_points)
+        self.bpm_curve.setData(x_data, list(self.motion_data))
+
+        if num_points > 10:
+            recent_data = list(self.motion_data)
+            min_y = min(recent_data)
+            max_y = max(recent_data)
+            
+            padding = (max_y - min_y) * 0.1
+            if padding < 1e-6: 
+                padding = 0.1
+                
+            self.plot_widget.setYRange(min_y - padding, max_y + padding)
 
     def update_temps(self, mouse, bed, pwm):
         self.lbl_mouse_temp.setText(f"Core: {mouse:.1f} °C")
         self.lbl_bed_temp.setText(f"Bed: {bed:.1f} °C (Heater: {pwm:.0f}%)")
 
     def closeEvent(self, event):
-        self.cam_worker.stop()
-        self.hw_worker.stop()
+        try:
+            self.cam_worker.frame_ready.disconnect()
+            self.cam_worker.bpm_updated.disconnect()
+            self.cam_worker.status_updated.disconnect()
+            self.cam_worker.motion_updated.disconnect()
+            self.hw_worker.temps_updated.disconnect()
+        except TypeError:
+            pass 
+
+        self.cam_worker.running = False
+        self.hw_worker.running = False
+        
+        self.cam_worker.wait(500)
+        self.hw_worker.wait(500)
+        
         event.accept()
 
 if __name__ == "__main__":
