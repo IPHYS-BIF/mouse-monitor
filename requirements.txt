@@ -1,2 +1,5 @@
 numpy>=1.26.0
 opencv-python>=4.9.0
+PyQt6>=6.10.2
+pyqtgraph>=0.13.6
+ultralytics>=8.4.22
