@@ -138,8 +138,7 @@ def selectRoi(frameBgr: np.ndarray) -> RoiState | None:
     if width < 8 or height < 8:
         return None
 
-    # grayFrame = cv2.cvtColor(frameBgr, cv2.COLOR_BGR2GRAY)
-    grayFrame = frameBgr[:, :, 2].copy()
+    grayFrame = cv2.cvtColor(frameBgr, cv2.COLOR_BGR2GRAY)
     templateGray = grayFrame[y : y + height, x : x + width].copy()
     return RoiState(x=x, y=y, width=width, height=height, templateGray=templateGray)
 
@@ -337,8 +336,7 @@ def main() -> None:
         capture.release()
         raise RuntimeError("ROI selection cancelled or too small.")
 
-    # firstGrayFrame = cv2.cvtColor(firstFrame, cv2.COLOR_BGR2GRAY)
-    firstGrayFrame = firstFrame[:, :, 2].copy()
+    firstGrayFrame = cv2.cvtColor(firstFrame, cv2.COLOR_BGR2GRAY)
     if analysisBlurKernel > 1:
         firstGrayFrame = cv2.GaussianBlur(firstGrayFrame, (analysisBlurKernel, analysisBlurKernel), 0)
     roiState.templateGray = firstGrayFrame[
@@ -362,8 +360,7 @@ def main() -> None:
 
         processedFrameCount += 1
         nowTime = getSampleTime(capture, isVideoFile, videoFps, processedFrameCount, runStartTime)
-        # grayFrame = cv2.cvtColor(frameBgr, cv2.COLOR_BGR2GRAY)
-        grayFrame = frameBgr[:, :, 2].copy()
+        grayFrame = cv2.cvtColor(frameBgr, cv2.COLOR_BGR2GRAY)
         if analysisBlurKernel > 1:
             analysisGrayFrame = cv2.GaussianBlur(grayFrame, (analysisBlurKernel, analysisBlurKernel), 0)
         else:
