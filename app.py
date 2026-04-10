@@ -2,15 +2,138 @@ import sys
 import time
 import argparse
 import collections
+import os
+import platform
 from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QGridLayout, QFrame, QSlider)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap, QFont
+if platform.system() == "Windows":
+    import winsound
+
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QLabel, QPushButton, QGridLayout, QFrame, QSlider, QCheckBox, QRubberBand)
+from PySide6.QtCore import Qt, QThread, Signal, QRect, QSize
+from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor, QPen
 import pyqtgraph as pg
+
+class RangeSlider(QWidget):
+    valueChanged = Signal(int, int)
+
+    def __init__(self, minimum=0, maximum=100):
+        super().__init__()
+        self.setMinimumSize(100, 30)
+        self.minimum = minimum
+        self.maximum = maximum
+        self._min_val = minimum
+        self._max_val = maximum
+        self.handle_radius = 8
+        self.active_handle = None
+
+    def setRange(self, min_val, max_val):
+        self.minimum = min_val; self.maximum = max_val; self.update()
+
+    def setValues(self, min_val, max_val):
+        self._min_val = max(self.minimum, min_val)
+        self._max_val = min(self.maximum, max_val)
+        self.update()
+
+    def val_to_pos(self, val):
+        w = self.width() - 2 * self.handle_radius
+        return self.handle_radius + int((val - self.minimum) / (self.maximum - self.minimum) * w) if self.maximum > self.minimum else 0
+
+    def pos_to_val(self, pos):
+        w = self.width() - 2 * self.handle_radius
+        val = self.minimum + (pos - self.handle_radius) / w * (self.maximum - self.minimum)
+        return max(self.minimum, min(self.maximum, int(val)))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cy = self.height() // 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#e1e9ee"))
+        painter.drawRoundedRect(self.handle_radius, cy - 2, self.width() - 2 * self.handle_radius, 4, 2, 2)
+        x1 = self.val_to_pos(self._min_val)
+        x2 = self.val_to_pos(self._max_val)
+        painter.setBrush(QColor("#005db5"))
+        painter.drawRoundedRect(x1, cy - 2, x2 - x1, 4, 2, 2)
+        painter.setBrush(QColor("white"))
+        painter.setPen(QPen(QColor("#ccc"), 1))
+        painter.drawEllipse(QRect(x1 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
+        painter.drawEllipse(QRect(x2 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
+
+    def mousePressEvent(self, event):
+        pos = int(event.position().x())
+        x1 = self.val_to_pos(self._min_val)
+        x2 = self.val_to_pos(self._max_val)
+        self.active_handle = 'min' if abs(pos - x1) < abs(pos - x2) else 'max'
+        self.mouseMoveEvent(event)
+
+    def mouseMoveEvent(self, event):
+        val = self.pos_to_val(int(event.position().x()))
+        if self.active_handle == 'min':
+            self._min_val = min(val, self._max_val - 1)
+        elif self.active_handle == 'max':
+            self._max_val = max(val, self._min_val + 1)
+        self.update()
+        self.valueChanged.emit(self._min_val, self._max_val)
+
+    def mouseReleaseEvent(self, event):
+        self.active_handle = None
+
+class InteractiveVideoLabel(QLabel):
+    # Emits normalized coordinates (0.0 to 1.0) so it scales perfectly 
+    roi_selected = Signal(float, float, float, float) 
+
+    def __init__(self):
+        super().__init__()
+        self.rubberBand = QRubberBand(QRubberBand.Shape.Rectangle, self)
+        self.origin = None
+        self.selection_active = False
+
+    def enable_selection(self):
+        self.selection_active = True
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def mousePressEvent(self, event):
+        if not self.selection_active: return
+        self.origin = event.position().toPoint()
+        self.rubberBand.setGeometry(QRect(self.origin, QSize()))
+        self.rubberBand.show()
+
+    def mouseMoveEvent(self, event):
+        if not self.selection_active or not self.origin: return
+        self.rubberBand.setGeometry(QRect(self.origin, event.position().toPoint()).normalized())
+
+    def mouseReleaseEvent(self, event):
+        if not self.selection_active or not self.origin: return
+        self.rubberBand.hide()
+        self.selection_active = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+        rect = self.rubberBand.geometry()
+        if rect.width() < 10 or rect.height() < 10:
+            return # Ignore accidental tiny clicks
+
+        if not self.pixmap(): return
+        
+        # Map the screen click down to the actual video pixels
+        pm_width = self.pixmap().width()
+        pm_height = self.pixmap().height()
+        offset_x = (self.width() - pm_width) / 2
+        offset_y = (self.height() - pm_height) / 2
+
+        x = max(0, rect.x() - offset_x)
+        y = max(0, rect.y() - offset_y)
+
+        # Normalize between 0 and 1
+        nx = x / pm_width
+        ny = y / pm_height
+        nw = rect.width() / pm_width
+        nh = rect.height() / pm_height
+
+        self.roi_selected.emit(nx, ny, nw, nh)
 
 try:
     from ultralytics import YOLO
@@ -38,6 +161,10 @@ class BreathEstimator:
         self.timeSeries = collections.deque()
         self.motionSeries = collections.deque()
         self.smoothedBreathBpm = None
+
+    def update_limits(self, min_bpm: float, max_bpm: float) -> None:
+        self.breathMinHz = min_bpm / 60.0
+        self.breathMaxHz = max_bpm / 60.0
 
     def addSample(self, sampleTime: float, motionValue: float) -> None:
         self.timeSeries.append(sampleTime)
@@ -173,7 +300,7 @@ class PIDController:
         return max(0.0, min(100.0, output)) # Constrain PWM between 0 and 100%
 
 class HardwareWorker(QThread):
-    temps_updated = pyqtSignal(float, float, float) # mouse_temp, bed_temp, pwm
+    temps_updated = Signal(float, float, float) # mouse_temp, bed_temp, pwm
     
     def __init__(self, test_mode=False):
         super().__init__()
@@ -223,10 +350,10 @@ class HardwareWorker(QThread):
         self.wait()
 
 class CameraWorker(QThread):
-    frame_ready = pyqtSignal(QImage)
-    bpm_updated = pyqtSignal(float)
-    status_updated = pyqtSignal(str)
-    motion_updated = pyqtSignal(float)
+    frame_ready = Signal(QImage)
+    bpm_updated = Signal(float)
+    status_updated = Signal(str)
+    motion_updated = Signal(float)
 
     def __init__(self, camera_index=0, video_path="", test_mode=False):
         super().__init__()
@@ -234,6 +361,16 @@ class CameraWorker(QThread):
         self.camera_index = camera_index
         self.video_path = video_path
         self.test_mode = test_mode
+        self.min_bpm = 60.0
+        self.max_bpm = 240.0
+        self.use_yolo = True
+        self.manual_roi_pending = None
+    
+    def set_use_yolo(self, state):
+        self.use_yolo = state
+        
+    def apply_manual_roi(self, nx, ny, nw, nh):
+        self.manual_roi_pending = (nx, ny, nw, nh)
 
     def run(self):
         source = self.video_path if self.video_path else self.camera_index
@@ -243,11 +380,13 @@ class CameraWorker(QThread):
         videoFps = capture.get(cv2.CAP_PROP_FPS) if isVideoFile else 0.0
         processedFrameCount = 0
         
-        estimator = BreathEstimator()
+        estimator = BreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
         roiState = None
         runStartTime = time.perf_counter()
 
         while self.running:
+            # Sync parameters to estimator
+            estimator.update_limits(self.min_bpm, self.max_bpm)
             ret, frame = capture.read()
             if not ret:
                 if self.video_path: # Loop video for testing
@@ -263,12 +402,30 @@ class CameraWorker(QThread):
 
             grayFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # --- HYBRID TRACKING ---
+            # hybrid tracking
+            if self.manual_roi_pending is not None:
+                nx, ny, nw, nh = self.manual_roi_pending
+                self.manual_roi_pending = None
+                fh, fw = frame.shape[:2]
+                
+                x, y = int(nx * fw), int(ny * fh)
+                w, h = int(nw * fw), int(nh * fh)
+                
+                templateGray = grayFrame[y : y + h, x : x + w].copy()
+                roiState = RoiState(x=x, y=y, width=w, height=h, templateGray=templateGray)
+                estimator = BreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+                self.motion_updated.emit(0.0)
+
+            # main tracking logic
             if roiState is None:
-                self.status_updated.emit("SEARCHING FOR TARGET...")
-                roiState = autoDetectRoiYolo(frame)
-                if roiState is not None:
-                    estimator = BreathEstimator() # Reset math on new target
+                if self.use_yolo:
+                    self.status_updated.emit("SEARCHING FOR TARGET (YOLO)...")
+                    roiState = autoDetectRoiYolo(frame)
+                    if roiState is not None:
+                        estimator = BreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+                        self.motion_updated.emit(0.0)
+                else:
+                    self.status_updated.emit("WAITING FOR MANUAL ROI (Click & Drag)")
             else:
                 roiState, confidence = updateRoiByTemplate(grayFrame, roiState)
                 if confidence < 0.55:
@@ -333,7 +490,7 @@ class MouseTrackerDashboard(QMainWindow):
         # Header
         top_bar = QHBoxLayout()
         self.lbl_status = QLabel("System Initializing...")
-        self.lbl_status.setFont(QFont("Space Grotesk", 14, QFont.Weight.Bold))
+        self.lbl_status.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self.btn_record = QPushButton("RECORD SESSION")
         self.btn_record.setObjectName("RecordButton")
         self.btn_record.setFixedSize(160, 45)
@@ -345,11 +502,35 @@ class MouseTrackerDashboard(QMainWindow):
         # Main Grid
         grid_layout = QGridLayout()
         
-        # 1. Video Feed
-        self.video_label = QLabel()
+        # 1. Video Feed and Controls
+        video_col = QVBoxLayout()
+        
+        # UI Toggles
+        roi_controls = QHBoxLayout()
+        self.toggle_yolo = QCheckBox("Auto-Detect ROI (YOLO)")
+        self.toggle_yolo.setChecked(True)
+        self.toggle_yolo.setStyleSheet("font-weight: bold; color: #005db5;")
+        self.toggle_yolo.toggled.connect(self.on_yolo_toggled)
+        
+        self.btn_manual_roi = QPushButton("Draw Manual ROI")
+        self.btn_manual_roi.setFixedSize(150, 30)
+        self.btn_manual_roi.setEnabled(False) # Disabled by default
+        self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
+        
+        roi_controls.addWidget(self.toggle_yolo)
+        roi_controls.addWidget(self.btn_manual_roi)
+        roi_controls.addStretch()
+        video_col.addLayout(roi_controls)
+
+        # Interactive Video Label
+        self.video_label = InteractiveVideoLabel()
         self.video_label.setStyleSheet("background-color: #000; border-radius: 10px;")
         self.video_label.setMinimumSize(640, 480)
-        grid_layout.addWidget(self.video_label, 0, 0, 2, 1)
+        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_label.roi_selected.connect(self.on_roi_drawn)
+        
+        video_col.addWidget(self.video_label)
+        grid_layout.addLayout(video_col, 0, 0, 2, 1)
 
         # 2. Hardware / PID Control Card
         hw_card = QFrame()
@@ -360,8 +541,8 @@ class MouseTrackerDashboard(QMainWindow):
         # Readings
         self.lbl_mouse_temp = QLabel("Core: --.- °C")
         self.lbl_bed_temp = QLabel("Bed: --.- °C")
-        self.lbl_mouse_temp.setFont(QFont("Inter", 18, QFont.Weight.Bold))
-        self.lbl_bed_temp.setFont(QFont("Inter", 14))
+        self.lbl_mouse_temp.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        self.lbl_bed_temp.setFont(QFont("Segoe UI", 14))
         hw_layout.addWidget(self.lbl_mouse_temp)
         hw_layout.addWidget(self.lbl_bed_temp)
         
@@ -379,6 +560,46 @@ class MouseTrackerDashboard(QMainWindow):
         hw_layout.addWidget(self.slider_temp)
         grid_layout.addWidget(hw_card, 0, 1)
 
+        # 3. Alarm & Filtering Card
+        alarm_card = QFrame()
+        alarm_card.setObjectName("Card")
+        alarm_layout = QVBoxLayout(alarm_card)
+        
+        alarm_layout.addWidget(QLabel("BPM FILTER & ALARM", font=QFont("Segoe UI", 12, QFont.Weight.Bold)))
+        
+        filter_header = QHBoxLayout()
+        filter_header.addWidget(QLabel("Valid BPM Range:"))
+        self.lbl_bpm_range = QLabel("60 - 240")
+        self.lbl_bpm_range.setStyleSheet("color: #005db5; font-weight: bold;")
+        filter_header.addStretch()
+        filter_header.addWidget(self.lbl_bpm_range)
+        alarm_layout.addLayout(filter_header)
+
+        self.bpm_slider = RangeSlider(minimum=30, maximum=400)
+        self.bpm_slider.setValues(60, 240)
+        self.bpm_slider.valueChanged.connect(self.on_bpm_range_changed)
+        alarm_layout.addWidget(self.bpm_slider)
+
+        self.cb_alarm = QCheckBox("Enable High BPM Alarm")
+        self.cb_alarm.setStyleSheet("font-weight: bold;")
+        alarm_layout.addWidget(self.cb_alarm)
+
+        threshold_layout = QHBoxLayout()
+        threshold_layout.addWidget(QLabel("Alarm Threshold:"))
+        self.lbl_alarm_thresh = QLabel("150 BPM")
+        self.lbl_alarm_thresh.setStyleSheet("color: #9f403d; font-weight: bold;")
+        threshold_layout.addStretch()
+        threshold_layout.addWidget(self.lbl_alarm_thresh)
+        alarm_layout.addLayout(threshold_layout)
+
+        self.slider_alarm = QSlider(Qt.Orientation.Horizontal)
+        self.slider_alarm.setRange(30, 400)
+        self.slider_alarm.setValue(150)
+        self.slider_alarm.valueChanged.connect(self.on_alarm_threshold_changed)
+        alarm_layout.addWidget(self.slider_alarm)
+
+        grid_layout.addWidget(alarm_card, 1, 1)
+
         content_layout.addLayout(grid_layout)
 
         # 3. Telemetry Graph
@@ -389,7 +610,7 @@ class MouseTrackerDashboard(QMainWindow):
         header_layout = QHBoxLayout()
         header_layout.addWidget(QLabel("Breathing Frequency (BPM)"))
         self.lbl_bpm_value = QLabel("-- BPM")
-        self.lbl_bpm_value.setFont(QFont("Inter", 24, QFont.Weight.Bold))
+        self.lbl_bpm_value.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
         self.lbl_bpm_value.setStyleSheet("color: #005db5;")
         header_layout.addWidget(self.lbl_bpm_value, alignment=Qt.AlignmentFlag.AlignRight)
         graph_layout.addLayout(header_layout)
@@ -413,7 +634,7 @@ class MouseTrackerDashboard(QMainWindow):
 
     def apply_stylesheet(self):
         self.setStyleSheet("""
-            QMainWindow { background-color: #f7f9fb; font-family: 'Inter', sans-serif; }
+            QMainWindow { background-color: #f7f9fb; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
             #Card { background-color: #ffffff; border: 1px solid #e1e9ee; border-radius: 12px; padding: 10px; }
             #RecordButton { background-color: #9f403d; color: white; font-weight: bold; border-radius: 6px; }
             QLabel { color: #2a3439; }
@@ -438,6 +659,38 @@ class MouseTrackerDashboard(QMainWindow):
         self.lbl_target.setText(f"{temp:.1f} °C")
         self.hw_worker.set_target(temp)
 
+    def on_bpm_range_changed(self, min_val, max_val):
+        self.lbl_bpm_range.setText(f"{min_val} - {max_val}")
+        if hasattr(self, 'cam_worker'):
+            self.cam_worker.min_bpm = float(min_val)
+            self.cam_worker.max_bpm = float(max_val)
+
+    def on_alarm_threshold_changed(self, val):
+        self.lbl_alarm_thresh.setText(f"{val} BPM")
+
+    def trigger_alarm(self):
+        import threading
+        current_time = time.time()
+        if current_time - getattr(self, 'last_beep_time', 0) > 1.0:
+            self.last_beep_time = current_time
+            def play_beep():
+                if platform.system() == "Windows":
+                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                else:
+                    os.system('printf "\a" > /dev/console 2>/dev/null || (speaker-test -t sine -f 1000 -l 1 & sleep 0.3 ; kill -9 $!) > /dev/null 2>&1')
+            threading.Thread(target=play_beep, daemon=True).start()
+
+    def on_yolo_toggled(self, checked):
+        self.cam_worker.set_use_yolo(checked)
+        self.btn_manual_roi.setEnabled(not checked)
+        
+    def activate_drawing_mode(self):
+        self.video_label.enable_selection()
+        
+    def on_roi_drawn(self, nx, ny, nw, nh):
+        if hasattr(self, 'cam_worker'):
+            self.cam_worker.apply_manual_roi(nx, ny, nw, nh)
+
     def update_video(self, q_img):
         pixmap = QPixmap.fromImage(q_img).scaled(
             self.video_label.width(), self.video_label.height(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -445,6 +698,8 @@ class MouseTrackerDashboard(QMainWindow):
 
     def update_bpm(self, bpm):
         self.lbl_bpm_value.setText(f"{bpm:.1f} BPM")
+        if self.cb_alarm.isChecked() and bpm > self.slider_alarm.value():
+            self.trigger_alarm()
 
     def update_graph(self, motion_value):
         self.motion_data.append(motion_value)
