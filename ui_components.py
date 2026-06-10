@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QLabel, QRubberBand
+from PySide6.QtWidgets import QWidget, QLabel, QRubberBand, QSizePolicy
 from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtGui import QPainter, QColor, QPen
 
@@ -76,6 +76,15 @@ class InteractiveVideoLabel(QLabel):
         self.rubberBand = QRubberBand(QRubberBand.Shape.Rectangle, self)
         self.origin = None
         self.selection_active = False
+        
+        size_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        size_policy.setHeightForWidth(True)
+        self.setSizePolicy(size_policy)
+
+    def heightForWidth(self, width):
+        if self.pixmap() and not self.pixmap().isNull():
+            return int(width * self.pixmap().height() / max(1, self.pixmap().width()))
+        return int(width * 3 / 4) # Default 4:3
 
     def enable_selection(self):
         self.selection_active = True

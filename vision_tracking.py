@@ -2,11 +2,6 @@ import cv2
 import numpy as np
 from dataclasses import dataclass
 
-try:
-    from ultralytics import YOLO
-except ImportError:
-    print("Warning: ultralytics is not installed. YOLO detection will fail.")
-
 YOLO_MODEL = None
 
 @dataclass
@@ -24,7 +19,12 @@ def clampRoi(x, y, w, h, fw, fh):
 def autoDetectRoiYolo(frameBgr: np.ndarray) -> RoiState | None:
     global YOLO_MODEL
     if YOLO_MODEL is None:
-        YOLO_MODEL = YOLO('yolov8n.pt') 
+        try:
+            from ultralytics import YOLO
+            YOLO_MODEL = YOLO('yolov8n.pt') 
+        except ImportError:
+            print("Warning: ultralytics is not installed. YOLO detection will fail.")
+            return None
         
     results = YOLO_MODEL(frameBgr, verbose=False)
     if len(results[0].boxes) == 0:
@@ -77,3 +77,18 @@ def computeRoiMotion(grayFrame: np.ndarray, roiState: RoiState) -> float:
     roiBlur = cv2.GaussianBlur(roi, (5, 5), 0)
     motionMap = cv2.absdiff(roiBlur, roiState.templateGray)
     return float(np.mean(motionMap))
+
+def computeOpticalFlowMotion(prevGrayFrame: np.ndarray, grayFrame: np.ndarray, roiState: RoiState) -> float:
+    # Crop the current and previous frame to the ROI
+    currRoi = grayFrame[roiState.y : roiState.y + roiState.height, roiState.x : roiState.x + roiState.width]
+    prevRoi = prevGrayFrame[roiState.y : roiState.y + roiState.height, roiState.x : roiState.x + roiState.width]
+    
+    # Calculate Dense Optical Flow using Farneback method
+    flow = cv2.calcOpticalFlowFarneback(prevRoi, currRoi, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+    
+    # flow is a 3D array where the 3rd dimension has 2 channels: dx and dy.
+    # We are interested in dy (vertical expansion/contraction)
+    dy = flow[..., 1]
+    
+    # We can use the mean of absolute vertical motion
+    return float(np.mean(np.abs(dy)))

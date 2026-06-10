@@ -8,6 +8,7 @@ if __name__ == "__main__":
     parser.add_argument("--cameraIndex", type=int, default=0)
     parser.add_argument("--videoPath", type=str, default="")
     parser.add_argument("--test-mode", action="store_true", help="Run UI on PC with simulated hardware")
+    parser.add_argument("--breath-only", action="store_true", help="Run only for breath rate monitoring without temperature control")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
