@@ -162,26 +162,14 @@ class MouseTrackerDashboard(QMainWindow):
         graph_layout = QVBoxLayout(graph_card)
         
         header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("BPM (Base | Adv | Flow):"))
+        header_layout.addWidget(QLabel("BPM:"))
         
-        self.lbl_bpm_base = QLabel("--")
-        self.lbl_bpm_base.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
-        self.lbl_bpm_base.setStyleSheet("color: #005db5;") # Blue
-        
-        self.lbl_bpm_adv = QLabel("--")
-        self.lbl_bpm_adv.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
-        self.lbl_bpm_adv.setStyleSheet("color: #2ca02c;") # Green
-        
-        self.lbl_bpm_flow = QLabel("--")
-        self.lbl_bpm_flow.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
-        self.lbl_bpm_flow.setStyleSheet("color: #ff7f0e;") # Orange
+        self.lbl_bpm = QLabel("--")
+        self.lbl_bpm.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
+        self.lbl_bpm.setStyleSheet("color: #2ca02c;") # Green
         
         header_layout.addStretch()
-        header_layout.addWidget(self.lbl_bpm_base)
-        header_layout.addWidget(QLabel("|", font=QFont("Segoe UI", 20)))
-        header_layout.addWidget(self.lbl_bpm_adv)
-        header_layout.addWidget(QLabel("|", font=QFont("Segoe UI", 20)))
-        header_layout.addWidget(self.lbl_bpm_flow)
+        header_layout.addWidget(self.lbl_bpm)
         
         graph_layout.addLayout(header_layout)
 
@@ -192,11 +180,9 @@ class MouseTrackerDashboard(QMainWindow):
         self.plot_widget.setLabel('bottom', "Time", units="s")
         self.plot_widget.hideAxis('left')
         self.plot_widget.setMouseEnabled(x=False, y=False)
-        self.motion_data_base = collections.deque(maxlen=150)
-        self.motion_data_flow = collections.deque(maxlen=150)
+        self.motion_data = collections.deque(maxlen=150)
         
-        self.curve_base = self.plot_widget.plot(name="Pixel Diff", pen=pg.mkPen(color='#005db5', width=2))
-        self.curve_flow = self.plot_widget.plot(name="Optical Flow", pen=pg.mkPen(color='#ff7f0e', width=2))
+        self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#2ca02c', width=2))
         graph_layout.addWidget(self.plot_widget)
 
         content_layout.addWidget(graph_card)
@@ -283,15 +269,8 @@ class MouseTrackerDashboard(QMainWindow):
             self.video_label.width(), self.video_label.height(), Qt.AspectRatioMode.KeepAspectRatio)
         self.video_label.setPixmap(pixmap)
 
-    def update_bpm(self, bpms):
-        bpm_base, bpm_adv, bpm_flow = bpms
-        
-        self.lbl_bpm_base.setText(f"{bpm_base:.1f}")
-        self.lbl_bpm_adv.setText(f"{bpm_adv:.1f}")
-        self.lbl_bpm_flow.setText(f"{bpm_flow:.1f}")
-        
-        # Use advanced estimator for the alarm
-        bpm = bpm_adv if bpm_adv > 0 else bpm_base
+    def update_bpm(self, bpm):
+        self.lbl_bpm.setText(f"{bpm:.1f}")
         
         if self.cb_alarm.isChecked() and (bpm < self.alarm_min_bpm or bpm > self.alarm_max_bpm) and bpm > 0:
             if getattr(self, 'alarm_trigger_start', None) is None:
@@ -301,30 +280,19 @@ class MouseTrackerDashboard(QMainWindow):
         else:
             self.alarm_trigger_start = None
 
-    def update_graph(self, motions):
-        m_base, m_adv, m_flow = motions
-        self.motion_data_base.append(m_base)
-        self.motion_data_flow.append(m_flow)
+    def update_graph(self, motion):
+        self.motion_data.append(motion)
         
-        num_points = len(self.motion_data_base)
+        num_points = len(self.motion_data)
         x_data = np.linspace(-num_points / 30.0, 0.0, num_points)
         
-        self.curve_base.setData(x_data, list(self.motion_data_base))
-        self.curve_flow.setData(x_data, list(self.motion_data_flow))
+        self.curve.setData(x_data, list(self.motion_data))
 
         if num_points > 10:
-            recent_base = list(self.motion_data_base)
-            recent_flow = list(self.motion_data_flow)
+            recent_motion = list(self.motion_data)
             
-            # Normalize for visualization if ranges are vastly different
-            min_base = min(recent_base)
-            max_base = max(recent_base)
-            min_flow = min(recent_flow)
-            max_flow = max(recent_flow)
-            
-            # Simple global bounds for unnormalized display
-            min_y = min(min_base, min_flow)
-            max_y = max(max_base, max_flow)
+            min_y = min(recent_motion)
+            max_y = max(recent_motion)
             
             padding = (max_y - min_y) * 0.1
             if padding < 1e-6: 
