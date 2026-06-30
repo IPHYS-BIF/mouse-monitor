@@ -3,12 +3,13 @@ import numpy as np
 from scipy.signal import butter, filtfilt, find_peaks
 
 class AdvancedBreathEstimator:
-    def __init__(self, breathMinBpm: float = 60.0, breathMaxBpm: float = 240.0, bufferSeconds: float = 18.0):
+    def __init__(self, method = "default", breathMinBpm: float = 60.0, breathMaxBpm: float = 240.0, bufferSeconds: float = 18.0):
         self.breathMinHz = breathMinBpm / 60.0
         self.breathMaxHz = breathMaxBpm / 60.0
         self.bufferSeconds = bufferSeconds
         self.timeSeries = collections.deque()
         self.motionSeries = collections.deque()
+        self.method =  method
         self.smoothedBreathBpm = None
 
     def update_limits(self, min_bpm: float, max_bpm: float) -> None:

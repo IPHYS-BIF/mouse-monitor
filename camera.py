@@ -47,7 +47,7 @@ class CameraWorker(QThread):
         videoFps = capture.get(cv2.CAP_PROP_FPS) if isVideoFile else 0.0
         processedFrameCount = 0
         
-        estimator = AdvancedBreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+        estimator = AdvancedBreathEstimator(method="default", breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
         roiState = None
         runStartTime = time.perf_counter()
 

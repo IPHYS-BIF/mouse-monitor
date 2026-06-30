@@ -74,6 +74,7 @@ class MouseTrackerDashboard(QMainWindow):
         
         self.btn_manual_roi = QPushButton("Draw Manual ROI")
         self.btn_manual_roi.setFixedSize(150, 30)
+        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
         self.btn_manual_roi.setEnabled(False) # Disabled by default
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
         
