@@ -47,14 +47,11 @@ class MouseTrackerDashboard(QMainWindow):
 
         # Header
         top_bar = QHBoxLayout()
-        self.lbl_status = QLabel("System Initializing...")
-        self.lbl_status.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self.btn_record = QPushButton("RECORD SESSION")
         self.btn_record.setObjectName("RecordButton")
         self.btn_record.setFixedSize(160, 45)
         self.is_recording = False
         self.btn_record.clicked.connect(self.toggle_recording)
-        top_bar.addWidget(self.lbl_status)
         top_bar.addStretch()
         top_bar.addWidget(self.btn_record)
         content_layout.addLayout(top_bar)
@@ -186,7 +183,24 @@ class MouseTrackerDashboard(QMainWindow):
         self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#2ca02c', width=2))
         graph_layout.addWidget(self.plot_widget)
 
-        content_layout.addWidget(graph_card)
+        # Graph occupies 75 % of window width; constrained vertically.
+        graph_card.setMinimumHeight(160)
+        graph_card.setMaximumHeight(300)
+
+        graph_row = QHBoxLayout()
+        graph_row.setContentsMargins(0, 0, 0, 0)
+        graph_row.addWidget(graph_card, 3)   # 3 parts → 75 %
+        graph_row.addStretch(1)              # 1 part  → 25 % empty
+        content_layout.addLayout(graph_row)
+
+        # Info bar — full-width status strip pinned to the bottom
+        self.lbl_status = QLabel("System Initializing...")
+        self.lbl_status.setObjectName("InfoBar")
+        self.lbl_status.setFixedHeight(34)
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.lbl_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        content_layout.addWidget(self.lbl_status)
+
         main_layout.addWidget(content_area)
 
         self.apply_stylesheet()
@@ -209,6 +223,7 @@ class MouseTrackerDashboard(QMainWindow):
             QMainWindow { background-color: #f7f9fb; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
             #Card { background-color: #ffffff; border: 1px solid #e1e9ee; border-radius: 12px; padding: 10px; }
             #RecordButton { background-color: #9f403d; color: white; font-weight: bold; border-radius: 6px; }
+            #InfoBar { background-color: #1a2530; color: #d0dce5; font-family: 'Consolas', monospace; font-size: 12px; padding-left: 12px; padding-right: 12px; }
             QLabel { color: #2a3439; }
         """)
 

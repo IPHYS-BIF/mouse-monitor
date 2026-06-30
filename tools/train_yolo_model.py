@@ -254,8 +254,122 @@ def build_dataset_with_negatives(positive_images_dir: str, positive_labels_dir: 
 
 
 # ----------------------------------------------------------------------
-# 3. WRITE data.yaml
+# 2c. BUILD DATASET FROM FLAT POSITIVE / NEGATIVE DIRECTORIES
+#     (images and .txt labels sit in the same folder)
 # ----------------------------------------------------------------------
+def build_dataset_from_flat(
+    positive_dir: str,
+    negative_dir: str,
+    dataset_root: str,
+    val_ratio: float = 0.2,
+    negative_fraction_of_positives: float = 1.0,
+    seed: int = 42,
+) -> str:
+    """
+    Assemble a YOLO train/val dataset from two flat directories:
+
+        positive_dir/   <-- .jpg + non-empty .txt (one bbox line per mouse)
+        negative_dir/   <-- .jpg + empty .txt  (background, no objects)
+
+    Output structure (ready for ultralytics):
+
+        dataset_root/
+            images/train/  images/val/
+            labels/train/  labels/val/
+            data.yaml
+
+    Args:
+        positive_dir:  flat folder with positive images + YOLO labels
+        negative_dir:  flat folder with background images + empty label files
+        dataset_root:  where the final dataset is written
+        val_ratio:     fraction of positives held out for validation
+        negative_fraction_of_positives: how many negatives to use, as a
+                       fraction of the positive count (default 1.0 = equal)
+        seed:          random seed for reproducible splits
+    """
+    random.seed(seed)
+    pos_dir = Path(positive_dir)
+    neg_dir = Path(negative_dir)
+    out = Path(dataset_root)
+
+    img_exts = {".jpg", ".jpeg", ".png"}
+
+    # --- collect positive pairs (image + non-empty label) ---
+    pos_pairs: list[tuple[Path, Path]] = []
+    for img in sorted(pos_dir.iterdir()):
+        if img.suffix.lower() not in img_exts:
+            continue
+        lbl = pos_dir / (img.stem + ".txt")
+        if lbl.exists():
+            pos_pairs.append((img, lbl))
+        else:
+            print(f"[build_dataset_from_flat] WARNING: no label for {img.name}, skipping")
+
+    if not pos_pairs:
+        raise ValueError(f"No positive image/label pairs found in {pos_dir}")
+
+    random.shuffle(pos_pairs)
+    val_count = max(1, int(len(pos_pairs) * val_ratio))
+    pos_val   = pos_pairs[:val_count]
+    pos_train = pos_pairs[val_count:]
+
+    # --- collect negative pairs (image + empty label) ---
+    neg_pairs: list[tuple[Path, Path]] = []
+    for img in sorted(neg_dir.iterdir()):
+        if img.suffix.lower() not in img_exts:
+            continue
+        lbl = neg_dir / (img.stem + ".txt")
+        if lbl.exists():
+            neg_pairs.append((img, lbl))
+        else:
+            # create an empty label on the fly
+            neg_pairs.append((img, None))  # type: ignore[arg-type]
+
+    target_neg = int(len(pos_pairs) * negative_fraction_of_positives)
+    random.shuffle(neg_pairs)
+    neg_pairs = neg_pairs[:target_neg]
+
+    # tiny slice of negatives into val to sanity-check false positives
+    neg_val_count = max(0, int(len(neg_pairs) * 0.05))
+    neg_val   = neg_pairs[:neg_val_count]
+    neg_train = neg_pairs[neg_val_count:]
+
+    # --- write splits ---
+    def _write(split: str,
+               pos: list[tuple[Path, Path]],
+               neg: list) -> None:
+        img_out = out / "images" / split
+        lbl_out = out / "labels" / split
+        img_out.mkdir(parents=True, exist_ok=True)
+        lbl_out.mkdir(parents=True, exist_ok=True)
+        for img, lbl in pos:
+            shutil.copy2(img, img_out / img.name)
+            shutil.copy2(lbl, lbl_out / (img.stem + ".txt"))
+        for img, lbl in neg:
+            shutil.copy2(img, img_out / img.name)
+            if lbl is not None:
+                shutil.copy2(lbl, lbl_out / (img.stem + ".txt"))
+            else:
+                (lbl_out / (img.stem + ".txt")).write_text("")
+        print(f"[build_dataset_from_flat] {split}: {len(pos)} positive + {len(neg)} negative")
+
+    _write("train", pos_train, neg_train)
+    _write("val",   pos_val,   neg_val)
+
+    # --- write data.yaml ---
+    yaml_path = out / "data.yaml"
+    yaml_path.write_text(
+        f"path: {out.resolve().as_posix()}\n"
+        f"train: images/train\n"
+        f"val:   images/val\n\n"
+        f"nc: 1\n"
+        f"names: ['mouse']\n"
+    )
+    print(f"[build_dataset_from_flat] Dataset ready at {out}  |  data.yaml: {yaml_path}")
+    return str(yaml_path)
+
+
+
 def write_data_yaml(dataset_root: str, class_names: list, yaml_path: str = None):
     """
     Write the data.yaml config file YOLO needs for training.
@@ -394,52 +508,32 @@ def run_inference_on_video(weights_path: str, video_path: str, output_dir: str =
 # EXAMPLE END-TO-END USAGE
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
-    # --- Step 1: extract frames from your raw videos ---
-    extract_frames_from_multiple_videos(
-        video_paths=["videos/clip1.mp4", "videos/clip2.mp4"],
-        output_dir="dataset_raw/images",
-        frame_interval=15,        # adjust based on video length/fps
-        max_frames_per_video=500,
+    # ------------------------------------------------------------------
+    # Dataset is already labeled and stored as two flat directories:
+    #   data/labeled/positive/  ->  image_name.jpg + image_name.txt (bbox)
+    #   data/labeled/negative/  ->  image_name.jpg + image_name.txt (empty)
+    # ------------------------------------------------------------------
+
+    # --- Step 1: build train/val split from the flat dirs ---
+    data_yaml = build_dataset_from_flat(
+        positive_dir="data/labeled/positive",
+        negative_dir="data/labeled/negative",
+        dataset_root="data/dataset",
+        val_ratio=0.2,                        # 20 % of positives go to val
+        negative_fraction_of_positives=1.0,  # use all negatives (adjust if needed)
     )
 
-    # --- STOP HERE: label "dataset_raw/images" frames now using LabelImg/
-    #     CVAT/Roboflow/Label Studio, exporting YOLO-format .txt files
-    #     into "dataset_raw/labels" (same filename stem as each image). ---
-
-    # --- Step 2 (single-class with hard negatives, e.g. mouse detection): ---
-    # Use this instead of split_dataset() when you have a labeled positive
-    # set plus unlabeled negative/background folders (room, other_animal, etc.)
-    # Sized here for ~600 positive (mouse) + ~120 negative (room + other_animal)
-    # images, i.e. negative_fraction_of_positives=0.2 -> ~120 negatives total.
-    dataset_root = build_dataset_with_negatives(
-        positive_images_dir="mouse/images",
-        positive_labels_dir="mouse/labels",
-        negative_dirs=["room/images", "other_animal/images"],
-        dataset_root="dataset",
-        val_ratio=0.2,
-        negative_fraction_of_positives=0.2,  # ~120 negatives for ~600 positives
-    )
-
-    # --- Step 3: write data.yaml ---
-    data_yaml = write_data_yaml(
-        dataset_root=dataset_root,
-        class_names=["mouse"],  # single class
-    )
-
-    # --- Step 4: train ---
-    # epochs/batch/augmentation defaults in train_model() are already tuned
-    # for this dataset size (small, single-class, any-orientation target).
+    # --- Step 2: train ---
     best_weights = train_model(
         data_yaml=data_yaml,
         model_weights="yolov8n.pt",
-        device=0,           # RTX 5080
-        # batch=-1 (auto), epochs=150, patience=20, mosaic/mixup/flipud/etc.
-        # all use the tuned defaults above — override here if needed, e.g.:
-        # lr0=0.005, cos_lr=True,
+        device=0,    # GPU 0; use 'cpu' if no GPU
+        # epochs/batch/augmentation use the tuned defaults; override here if needed:
+        # epochs=100, batch=16, lr0=0.005, cos_lr=True,
     )
 
-    # --- Step 5: validate ---
+    # --- Step 3: validate ---
     validate_model(best_weights, data_yaml)
 
-    # --- Step 6: run on a new video ---
-    run_inference_on_video(best_weights, "videos/test_clip.mp4")
+    # --- Step 4: run on your test video ---
+    # run_inference_on_video(best_weights, "data/mouse_breath.mp4")
