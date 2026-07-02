@@ -18,13 +18,15 @@ class CameraWorker(QThread):
         self.camera_index = camera_index
         self.video_path = video_path
         self.test_mode = test_mode
-        self.min_bpm = 60.0
-        self.max_bpm = 240.0
+        self.min_bpm = 30.0  # Fixed physiological minimum
+        self.max_bpm = 300.0  # Fixed physiological maximum
         self.use_yolo = True
         self.manual_roi_pending = None
         self.recording_active = False
         self.recording_filename = ""
         self.video_writer = None
+        self._yolo_search_frame = 0
+        self._yolo_failed_attempts = 0
 
     def start_recording(self, filename):
         self.recording_filename = filename
@@ -35,6 +37,11 @@ class CameraWorker(QThread):
     
     def set_use_yolo(self, state):
         self.use_yolo = state
+    
+    def reset_roi(self):
+        """Reset ROI and YOLO state to restart detection from scratch."""
+        self.manual_roi_pending = None
+        self._roi_state_pending = None  # Signal to reset in run loop
         
     def apply_manual_roi(self, nx, ny, nw, nh):
         self.manual_roi_pending = (nx, ny, nw, nh)
@@ -47,13 +54,24 @@ class CameraWorker(QThread):
         videoFps = capture.get(cv2.CAP_PROP_FPS) if isVideoFile else 0.0
         processedFrameCount = 0
         
-        estimator = AdvancedBreathEstimator(method="default", breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+        method = "correlation"  # or "correlation"
+        estimator = AdvancedBreathEstimator(method=method, breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
         roiState = None
+        self._roi_state_pending = None
         runStartTime = time.perf_counter()
 
         while self.running:
-            # Sync parameters to estimator
-            estimator.update_limits(self.min_bpm, self.max_bpm)
+            # Check if ROI reset was requested
+            if self._roi_state_pending is None and roiState is not None:
+                roiState = None
+                self._yolo_search_frame = 0
+                self._yolo_failed_attempts = 0
+                estimator = AdvancedBreathEstimator(method=method, breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+                self.motion_updated.emit(0.0)
+                self.bpm_updated.emit(float('nan'))
+                self.status_updated.emit("SEARCHING FOR TARGET...")
+                self._roi_state_pending = False  # Mark reset as processed
+            
             ret, frame = capture.read()
             if not ret:
                 if self.video_path: # Loop video for testing
@@ -93,44 +111,81 @@ class CameraWorker(QThread):
                 
                 templateGray = grayFrame[y : y + h, x : x + w].copy()
                 roiState = RoiState(x=x, y=y, width=w, height=h, templateGray=templateGray)
-                estimator = AdvancedBreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+                estimator = AdvancedBreathEstimator(method=method, breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
                 self.motion_updated.emit(0.0)
+                self.bpm_updated.emit(float('nan'))
+                self.status_updated.emit("Detecting breathing...")
                 self.prev_gray_frame = None
 
             # main tracking logic
             if roiState is None:
                 if self.use_yolo:
-                    self.status_updated.emit("SEARCHING FOR TARGET (YOLO)...")
-                    roiState = autoDetectRoiYolo(frame)
-                    if roiState is not None:
-                        estimator = AdvancedBreathEstimator(breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
-                        self.motion_updated.emit(0.0)
-                        self.prev_gray_frame = None
+                    self._yolo_search_frame += 1
+                    if self._yolo_search_frame % 10 == 1:  # run YOLO every 10 frames
+                        roiState = autoDetectRoiYolo(frame)
+                        if roiState is not None:
+                            self._yolo_search_frame = 0
+                            self._yolo_failed_attempts = 0
+                            estimator = AdvancedBreathEstimator(method="correlation", breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
+                            self.motion_updated.emit(0.0)
+                            self.bpm_updated.emit(float('nan'))
+                            self.status_updated.emit("Detecting breathing...")
+                            self.prev_gray_frame = None
+                        else:
+                            self._yolo_failed_attempts += 1
+                            if self._yolo_failed_attempts >= 30:
+                                self.use_yolo = False
+                                self.status_updated.emit(
+                                    "MODEL NOT FOUND or no detection — Draw ROI manually")
+                            else:
+                                self.status_updated.emit(
+                                    f"SEARCHING FOR TARGET... ({self._yolo_failed_attempts}/30)")
                 else:
                     self.status_updated.emit("WAITING FOR MANUAL ROI (Click & Drag)")
             else:
                 roiState, confidence = updateRoiByTemplate(grayFrame, roiState)
-                if confidence < 0.55:
+                if confidence <= 0.9:
+                    # Mouse has moved from last known position — re-acquire
                     roiState = None
+                    self._yolo_search_frame = 0
                     self.prev_gray_frame = None
+                    self.bpm_updated.emit(float('nan'))
+                    self.status_updated.emit("Mouse retracking...")
                 else:
-                    self.status_updated.emit(f"TRACKING (Conf: {confidence:.2f})")
-                    motion = computeRoiMotion(grayFrame, roiState)
-                    self.prev_gray_frame = grayFrame.copy()
-                    
-                    self.motion_updated.emit(motion)
-
-                    estimator.addSample(nowTime, motion)
-                    
                     bpm, _ = estimator.estimateBreath()
                     
                     if bpm is not None:
+                        self._bpm_miss_count = 0
                         self.bpm_updated.emit(bpm)
+                        self.status_updated.emit("Mouse ROI stable")
+                    else:
+                        self._bpm_miss_count = getattr(self, '_bpm_miss_count', 0) + 1
+                        # Only clear BPM after 90 consecutive missed estimates (~3s at 30fps)
+                        if self._bpm_miss_count > 90:
+                            self.bpm_updated.emit(float('nan'))
+                            if estimator.has_enough_data():
+                                self.status_updated.emit("No breathing detected")
+                            else:
+                                self.status_updated.emit("Detecting breathing...")
+                    
+                    motion = computeRoiMotion(grayFrame, roiState)
+                    self.prev_gray_frame = grayFrame.copy()
+
+                    self.motion_updated.emit(motion)
+
+                    estimator.addSample(nowTime, motion)
+
+                    # Feed raw ROI patch for the correlation method
+                    roiPatch = grayFrame[roiState.y: roiState.y + roiState.height,
+                                         roiState.x: roiState.x + roiState.width]
+                    estimator.addFrame(nowTime, roiPatch)
+
+
 
                     # Draw Box
                     cv2.rectangle(frame, (roiState.x, roiState.y), 
                                  (roiState.x + roiState.width, roiState.y + roiState.height), 
-                                 (0, 255, 0), 2)
+                                 (181, 93, 0), 2)
 
             # Convert to UI format
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

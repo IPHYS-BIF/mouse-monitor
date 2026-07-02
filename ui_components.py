@@ -112,19 +112,37 @@ class InteractiveVideoLabel(QLabel):
 
         if not self.pixmap(): return
         
-        # Map the screen click down to the actual video pixels
+        # Get original pixmap dimensions (frame dimensions)
         pm_width = self.pixmap().width()
         pm_height = self.pixmap().height()
-        offset_x = (self.width() - pm_width) / 2
-        offset_y = (self.height() - pm_height) / 2
+        
+        # Calculate displayed pixmap size (accounting for KeepAspectRatio scaling)
+        label_width = self.width()
+        label_height = self.height()
+        
+        # Calculate scaling factors
+        scale_x = label_width / pm_width
+        scale_y = label_height / pm_height
+        scale = min(scale_x, scale_y)  # Keep aspect ratio
+        
+        # Calculate actual displayed dimensions
+        displayed_width = pm_width * scale
+        displayed_height = pm_height * scale
+        
+        # Calculate offset (centered within label)
+        offset_x = (label_width - displayed_width) / 2.0
+        offset_y = (label_height - displayed_height) / 2.0
 
-        x = max(0, rect.x() - offset_x)
-        y = max(0, rect.y() - offset_y)
+        # Convert screen coordinates to displayed pixmap coordinates
+        x = (rect.x() - offset_x) / scale
+        y = (rect.y() - offset_y) / scale
+        w = rect.width() / scale
+        h = rect.height() / scale
 
-        # Normalize between 0 and 1
-        nx = x / pm_width
-        ny = y / pm_height
-        nw = rect.width() / pm_width
-        nh = rect.height() / pm_height
+        # Clamp to frame bounds and normalize to [0, 1]
+        x = max(0.0, min(x / pm_width, 1.0))
+        y = max(0.0, min(y / pm_height, 1.0))
+        w = max(0.0, min(w / pm_width, 1.0))
+        h = max(0.0, min(h / pm_height, 1.0))
 
-        self.roi_selected.emit(nx, ny, nw, nh)
+        self.roi_selected.emit(x, y, w, h)
