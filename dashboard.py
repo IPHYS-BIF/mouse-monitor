@@ -110,7 +110,7 @@ class MouseTrackerDashboard(QMainWindow):
         left_layout.addWidget(graph_card)
 
         left_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        content_layout.addWidget(left_widget, 4)
+        content_layout.addWidget(left_widget, 3)
 
         # --- RIGHT SIDE: Controls (Narrow) ---
         right_widget = QWidget()
@@ -125,12 +125,12 @@ class MouseTrackerDashboard(QMainWindow):
             hw_layout = QVBoxLayout(self.hw_card)
             hw_layout.setContentsMargins(6, 6, 6, 6)
             hw_layout.setSpacing(4)
-            hw_layout.addWidget(QLabel("Temp Control", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
+            hw_layout.addWidget(QLabel("Temp Control", font=QFont("Segoe UI", 10, QFont.Weight.Bold)))
 
             temp_header = QHBoxLayout()
             temp_header.setSpacing(2)
-            temp_header.addWidget(QLabel("Core:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
-            self.lbl_target = QLabel("37.5 °C", font=QFont("Segoe UI", 8, QFont.Weight.Bold))
+            temp_header.addWidget(QLabel("Core:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
+            self.lbl_target = QLabel("37.5 °C", font=QFont("Segoe UI", 9, QFont.Weight.Bold))
             self.lbl_target.setStyleSheet("color: #005db5; font-weight: bold;")
             temp_header.addWidget(self.lbl_target)
             hw_layout.addLayout(temp_header)
@@ -171,12 +171,12 @@ class MouseTrackerDashboard(QMainWindow):
         alarm_layout.setContentsMargins(6, 6, 6, 6)
         alarm_layout.setSpacing(4)
 
-        alarm_layout.addWidget(QLabel("BPM Control", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
+        alarm_layout.addWidget(QLabel("BPM Control", font=QFont("Segoe UI", 10, QFont.Weight.Bold)))
 
         filter_header = QHBoxLayout()
         filter_header.setSpacing(2)
-        filter_header.addWidget(QLabel("Range:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
-        self.lbl_bpm_range = QLabel("50-80", font=QFont("Segoe UI", 8, QFont.Weight.Bold))
+        filter_header.addWidget(QLabel("Range:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
+        self.lbl_bpm_range = QLabel("50-80", font=QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.lbl_bpm_range.setStyleSheet("color: #005db5; font-weight: bold;")
         filter_header.addWidget(self.lbl_bpm_range)
         alarm_layout.addLayout(filter_header)
@@ -184,7 +184,7 @@ class MouseTrackerDashboard(QMainWindow):
         self.bpm_slider = RangeSlider(minimum=20, maximum=100)
         self.bpm_slider.setValues(50, 80)
         self.bpm_slider.valueChanged.connect(self.on_bpm_range_changed)
-        self.bpm_slider.setMinimumHeight(24)
+        self.bpm_slider.setMinimumHeight(26)
         alarm_layout.addWidget(self.bpm_slider)
 
         self.cb_alarm = QCheckBox("BPM alarm")
@@ -192,7 +192,7 @@ class MouseTrackerDashboard(QMainWindow):
             QCheckBox {
                 font-weight: bold;
                 color: #005db5;
-                font-size: 9px;
+                font-size: 10px;
             }
         """)
         self.cb_alarm.setChecked(True)
@@ -205,21 +205,36 @@ class MouseTrackerDashboard(QMainWindow):
             QCheckBox {
                 font-weight: bold;
                 color: #005db5;
-                font-size: 9px;
+                font-size: 10px;
             }
         """)
         self.toggle_yolo.toggled.connect(self.on_yolo_toggled)
         alarm_layout.addWidget(self.toggle_yolo)
 
         self.btn_manual_roi = QPushButton("Manual ROI")
-        self.btn_manual_roi.setFixedHeight(24)
-        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
+        self.btn_manual_roi.setFixedSize(100, 26)
+        btn_stylesheet = """QPushButton {
+            background-color: #005db5;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            border-radius: 4px;
+            padding: 0px;
+            border: none;
+        }
+        QPushButton:hover {
+            background-color: #004a8f;
+        }
+        QPushButton:pressed {
+            background-color: #003d75;
+        }"""
+        self.btn_manual_roi.setStyleSheet(btn_stylesheet)
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
         alarm_layout.addWidget(self.btn_manual_roi)
 
         self.btn_record = QPushButton("Record")
-        self.btn_record.setFixedHeight(24)
-        self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
+        self.btn_record.setFixedSize(100, 26)
+        self.btn_record.setStyleSheet(btn_stylesheet)
         self.btn_record.clicked.connect(self.toggle_recording)
         alarm_layout.addWidget(self.btn_record)
 
@@ -236,15 +251,15 @@ class MouseTrackerDashboard(QMainWindow):
         info_layout.setContentsMargins(6, 6, 6, 6)
         info_layout.setSpacing(4)
 
-        info_layout.addWidget(QLabel("Telemetry", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
+        info_layout.addWidget(QLabel("Telemetry", font=QFont("Segoe UI", 10, QFont.Weight.Bold)))
 
         # Status line
         status_line = QHBoxLayout()
         status_line.setSpacing(4)
         status_line.setContentsMargins(0, 0, 0, 0)
-        status_line.addWidget(QLabel("Status:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+        status_line.addWidget(QLabel("Status:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
         self.lbl_status = QLabel("System Initializing...")
-        self.lbl_status.setFont(QFont("Segoe UI", 8, QFont.Weight.Normal))
+        self.lbl_status.setFont(QFont("Segoe UI", 9, QFont.Weight.Normal))
         self.lbl_status.setStyleSheet("color: #666;")
         status_line.addWidget(self.lbl_status)
         status_line.addStretch()
@@ -254,9 +269,9 @@ class MouseTrackerDashboard(QMainWindow):
         bpm_line = QHBoxLayout()
         bpm_line.setSpacing(4)
         bpm_line.setContentsMargins(0, 0, 0, 0)
-        bpm_line.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+        bpm_line.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
         self.lbl_bpm = QLabel("-- BPM")
-        self.lbl_bpm.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.lbl_bpm.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.lbl_bpm.setStyleSheet("color: #005db5")
         bpm_line.addWidget(self.lbl_bpm)
         bpm_line.addStretch()
@@ -267,9 +282,9 @@ class MouseTrackerDashboard(QMainWindow):
             core_line = QHBoxLayout()
             core_line.setSpacing(4)
             core_line.setContentsMargins(0, 0, 0, 0)
-            core_line.addWidget(QLabel("Core:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+            core_line.addWidget(QLabel("Core:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
             self.lbl_mouse_temp = QLabel("--.- °C")
-            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             self.lbl_mouse_temp.setStyleSheet("color: #005db5")
             core_line.addWidget(self.lbl_mouse_temp)
             core_line.addStretch()
@@ -279,9 +294,9 @@ class MouseTrackerDashboard(QMainWindow):
             bed_line = QHBoxLayout()
             bed_line.setSpacing(4)
             bed_line.setContentsMargins(0, 0, 0, 0)
-            bed_line.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+            bed_line.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
             self.lbl_bed_temp = QLabel("--.- °C")
-            self.lbl_bed_temp.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+            self.lbl_bed_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             self.lbl_bed_temp.setStyleSheet("color: #005db5")
             bed_line.addWidget(self.lbl_bed_temp)
             bed_line.addStretch()
@@ -301,14 +316,12 @@ class MouseTrackerDashboard(QMainWindow):
         if not self.is_recording:
             self.is_recording = True
             self.btn_record.setText("Stop")
-            self.btn_record.setStyleSheet("background-color: #8b0000; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
             # Filename only - full path handled by camera worker
             filename = f"record_{int(time.time())}.mp4"
             self.cam_worker.start_recording(filename)
         else:
             self.is_recording = False
             self.btn_record.setText("Record")
-            self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
             self.cam_worker.stop_recording()
 
     def apply_stylesheet(self):
