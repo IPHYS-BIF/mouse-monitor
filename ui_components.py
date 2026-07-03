@@ -12,7 +12,7 @@ class RangeSlider(QWidget):
         self.maximum = maximum
         self._min_val = minimum
         self._max_val = maximum
-        self.handle_radius = 8
+        self.handle_radius = 7  # Half width/height for rectangular handles
         self.active_handle = None
 
     def setRange(self, min_val, max_val):
@@ -45,8 +45,9 @@ class RangeSlider(QWidget):
         painter.drawRoundedRect(x1, cy - 2, x2 - x1, 4, 2, 2)
         painter.setBrush(QColor("white"))
         painter.setPen(QPen(QColor("#ccc"), 1))
-        painter.drawEllipse(QRect(x1 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
-        painter.drawEllipse(QRect(x2 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
+        # Draw rectangular handles instead of circles
+        painter.drawRect(QRect(x1 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
+        painter.drawRect(QRect(x2 - self.handle_radius, cy - self.handle_radius, self.handle_radius * 2, self.handle_radius * 2))
 
     def mousePressEvent(self, event):
         pos = int(event.position().x())

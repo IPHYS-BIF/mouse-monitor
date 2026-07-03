@@ -57,9 +57,15 @@ class MouseTrackerDashboard(QMainWindow):
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        
+        # Main vertical layout to hold horizontal content + status bar
+        main_vertical_layout = QVBoxLayout(central_widget)
+        main_vertical_layout.setContentsMargins(8, 8, 8, 0)
+        main_vertical_layout.setSpacing(8)
+        
+        # Horizontal layout for content (video left, controls right)
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(8)
 
         # --- LEFT SIDE: Video + Graph ---
         left_widget = QWidget()
@@ -81,52 +87,26 @@ class MouseTrackerDashboard(QMainWindow):
         graph_card = QFrame()
         graph_card.setObjectName("Card")
         graph_layout = QVBoxLayout(graph_card)
-        graph_layout.setContentsMargins(6, 6, 6, 6)
-        graph_layout.setSpacing(4)
-
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(6)
-        header_layout.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 10, QFont.Weight.Normal)))
-
-        self.lbl_bpm = QLabel("-- BPM")
-        self.lbl_bpm.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        self.lbl_bpm.setStyleSheet("color: #005db5")
-        header_layout.addWidget(self.lbl_bpm)
-        header_layout.addSpacing(12)
-        
-        if not getattr(self.args, 'breath_only', False):
-            header_layout.addWidget(QLabel("Core:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
-            self.lbl_mouse_temp = QLabel("--.- °C")
-            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-            self.lbl_mouse_temp.setStyleSheet("color: #005db5")
-            header_layout.addWidget(self.lbl_mouse_temp)
-            header_layout.addSpacing(8)
-            
-            header_layout.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
-            self.lbl_bed_temp = QLabel("--.- °C")
-            self.lbl_bed_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-            self.lbl_bed_temp.setStyleSheet("color: #005db5")
-            header_layout.addWidget(self.lbl_bed_temp)
-        
-        header_layout.addStretch()
-        graph_layout.addLayout(header_layout)
+        graph_layout.setContentsMargins(3, 3, 3, 3)
+        graph_layout.setSpacing(2)
 
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setBackground('#f7f9fb')
-        self.plot_widget.addLegend(offset=(10, 10))
         self.plot_widget.showAxis('bottom')
-        self.plot_widget.setLabel('bottom', "Time", units="s", **{'font-size': '8pt'})
+        self.plot_widget.setLabel('bottom', "Time", units="s", **{'font-size': '7pt'})
         self.plot_widget.hideAxis('left')
         self.plot_widget.setMouseEnabled(x=False, y=False)
+        self.plot_widget.getPlotItem().setContentsMargins(1, 1, 1, 1)
+        self.plot_widget.getPlotItem().setLimits(yMin=0)  # No negative values
         self.motion_data = collections.deque(maxlen=150)
 
         self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#005db5', width=2))
-        graph_layout.addWidget(self.plot_widget)
+        graph_layout.addWidget(self.plot_widget, 1)
 
-        graph_card.setFixedHeight(70)
+        graph_card.setFixedHeight(140)
         left_layout.addWidget(graph_card)
 
-        main_layout.addWidget(left_widget, 4)
+        content_layout.addWidget(left_widget, 4)
 
         # --- RIGHT SIDE: Controls (Narrow) ---
         right_widget = QWidget()
@@ -171,10 +151,9 @@ class MouseTrackerDashboard(QMainWindow):
                 QSlider::handle:horizontal {
                     background: white;
                     border: 1px solid #ccc;
-                    width: 12px;
-                    height: 12px;
-                    margin: -4px 0;
-                    border-radius: 6px;
+                    width: 14px;
+                    height: 14px;
+                    margin: -5px 0;
                 }
             """)
             self.slider_temp.valueChanged.connect(self.on_target_changed)
@@ -244,36 +223,73 @@ class MouseTrackerDashboard(QMainWindow):
         self.alarm_max_bpm = 80
         self.alarm_trigger_start = None
 
-        right_col.addWidget(alarm_card)
-        right_col.addStretch()
+        right_col.addWidget(alarm_card, 1)
 
-        main_layout.addWidget(right_widget, 1)
+        # Telemetry Info Card
+        info_card = QFrame()
+        info_card.setObjectName("Card")
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(6, 6, 6, 6)
+        info_layout.setSpacing(4)
 
-        # Info bar — full width
+        info_layout.addWidget(QLabel("Telemetry", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
+
+        # Status line
+        status_line = QHBoxLayout()
+        status_line.setSpacing(4)
+        status_line.setContentsMargins(0, 0, 0, 0)
+        status_line.addWidget(QLabel("Status:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
         self.lbl_status = QLabel("System Initializing...")
-        self.lbl_status.setObjectName("InfoBar")
-        self.lbl_status.setFixedHeight(28)
-        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        self.lbl_status.setStyleSheet("font-size: 9px;")
+        self.lbl_status.setFont(QFont("Segoe UI", 8, QFont.Weight.Normal))
+        self.lbl_status.setStyleSheet("color: #666;")
+        status_line.addWidget(self.lbl_status)
+        status_line.addStretch()
+        info_layout.addLayout(status_line)
+
+        # BPM line
+        bpm_line = QHBoxLayout()
+        bpm_line.setSpacing(4)
+        bpm_line.setContentsMargins(0, 0, 0, 0)
+        bpm_line.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+        self.lbl_bpm = QLabel("-- BPM")
+        self.lbl_bpm.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.lbl_bpm.setStyleSheet("color: #005db5")
+        bpm_line.addWidget(self.lbl_bpm)
+        bpm_line.addStretch()
+        info_layout.addLayout(bpm_line)
+
+        if not getattr(self.args, 'breath_only', False):
+            # Core temp line
+            core_line = QHBoxLayout()
+            core_line.setSpacing(4)
+            core_line.setContentsMargins(0, 0, 0, 0)
+            core_line.addWidget(QLabel("Core:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+            self.lbl_mouse_temp = QLabel("--.- °C")
+            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+            self.lbl_mouse_temp.setStyleSheet("color: #005db5")
+            core_line.addWidget(self.lbl_mouse_temp)
+            core_line.addStretch()
+            info_layout.addLayout(core_line)
+
+            # Bed temp line
+            bed_line = QHBoxLayout()
+            bed_line.setSpacing(4)
+            bed_line.setContentsMargins(0, 0, 0, 0)
+            bed_line.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+            self.lbl_bed_temp = QLabel("--.- °C")
+            self.lbl_bed_temp.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+            self.lbl_bed_temp.setStyleSheet("color: #005db5")
+            bed_line.addWidget(self.lbl_bed_temp)
+            bed_line.addStretch()
+            info_layout.addLayout(bed_line)
+
+        info_card.setFixedHeight(140)
+        right_col.addWidget(info_card)
+
+        content_layout.addWidget(right_widget, 1)
         
-        # Create a bottom bar container
-        bottom_layout = QVBoxLayout()
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.setSpacing(0)
-        bottom_layout.addWidget(self.lbl_status)
-        
-        bottom_widget = QWidget()
-        bottom_widget.setLayout(bottom_layout)
-        
-        # Add bottom to main layout
-        main_widget = QWidget()
-        main_widget_layout = QVBoxLayout(main_widget)
-        main_widget_layout.setContentsMargins(0, 0, 0, 0)
-        main_widget_layout.setSpacing(0)
-        main_widget_layout.addLayout(main_layout, 1)
-        main_widget_layout.addWidget(bottom_widget)
-        
-        self.setCentralWidget(main_widget)
+        # Add content to main vertical layout
+        main_vertical_layout.addLayout(content_layout, 1)
 
         self.apply_stylesheet()
 
@@ -323,9 +339,13 @@ class MouseTrackerDashboard(QMainWindow):
             self.hw_worker.start()
 
     def on_target_changed(self, value):
-        temp = value / 10.0
-        self.lbl_target.setText(f"{temp:.1f} °C")
-        self.hw_worker.set_target(temp)
+        try:
+            if hasattr(self, 'hw_worker'):
+                temp = value / 10.0
+                self.lbl_target.setText(f"{temp:.1f} °C")
+                self.hw_worker.set_target(temp)
+        except RuntimeError:
+            pass
 
     def on_bpm_range_changed(self, min_val, max_val):
         self.lbl_bpm_range.setText(f"{min_val} - {max_val} BPM")
@@ -375,72 +395,112 @@ class MouseTrackerDashboard(QMainWindow):
             self.cam_worker.apply_manual_roi(nx, ny, nw, nh)
 
     def update_video(self, q_img):
-        pixmap = QPixmap.fromImage(q_img).scaled(
-            self.video_label.width(), self.video_label.height(), Qt.AspectRatioMode.KeepAspectRatio)
-        self.video_label.setPixmap(pixmap)
+        try:
+            if not hasattr(self, 'video_label') or self.video_label is None:
+                return
+            pixmap = QPixmap.fromImage(q_img).scaled(
+                self.video_label.width(), self.video_label.height(), Qt.AspectRatioMode.KeepAspectRatio)
+            self.video_label.setPixmap(pixmap)
+        except RuntimeError:
+            # Widget has been deleted
+            pass
 
     def update_tracking_status(self, text: str):
-        self.lbl_status.setText(text)
+        try:
+            if not hasattr(self, 'lbl_status') or self.lbl_status is None:
+                return
+            self.lbl_status.setText(text)
+        except RuntimeError:
+            pass
 
     def update_bpm(self, bpm):
-        import math
-        if math.isnan(bpm):
-            self.lbl_bpm.setText("--")
-            return
-        self.lbl_bpm.setText(f"{bpm:.1f}")
-        
-        if self.cb_alarm.isChecked() and (bpm < self.alarm_min_bpm or bpm > self.alarm_max_bpm) and bpm > 0:
-            if getattr(self, 'alarm_trigger_start', None) is None:
-                self.alarm_trigger_start = time.time()
-            elif time.time() - self.alarm_trigger_start > 5.0:
-                self.trigger_alarm()
-        else:
-            self.alarm_trigger_start = None
+        try:
+            if not hasattr(self, 'lbl_bpm') or self.lbl_bpm is None:
+                return
+            import math
+            if math.isnan(bpm):
+                self.lbl_bpm.setText("--")
+                return
+            self.lbl_bpm.setText(f"{bpm:.1f}")
+            
+            if self.cb_alarm.isChecked() and (bpm < self.alarm_min_bpm or bpm > self.alarm_max_bpm) and bpm > 0:
+                if getattr(self, 'alarm_trigger_start', None) is None:
+                    self.alarm_trigger_start = time.time()
+                elif time.time() - self.alarm_trigger_start > 5.0:
+                    self.trigger_alarm()
+            else:
+                self.alarm_trigger_start = None
+        except RuntimeError:
+            pass
     
 
 
     def update_graph(self, motion):
-        self.motion_data.append(motion)
-        
-        num_points = len(self.motion_data)
-        x_data = np.linspace(-num_points / 30.0, 0.0, num_points)
-        
-        self.curve.setData(x_data, list(self.motion_data))
+        try:
+            if not hasattr(self, 'plot_widget') or self.plot_widget is None:
+                return
+            if not hasattr(self, 'curve') or self.curve is None:
+                return
+            self.motion_data.append(motion)
+            
+            num_points = len(self.motion_data)
+            x_data = np.linspace(-num_points / 30.0, 0.0, num_points)
+            
+            self.curve.setData(x_data, list(self.motion_data))
 
-        if num_points > 10:
-            recent_motion = list(self.motion_data)
-            
-            min_y = min(recent_motion)
-            max_y = max(recent_motion)
-            
-            padding = (max_y - min_y) * 0.1
-            if padding < 1e-6: 
-                padding = 0.1
+            if num_points > 10:
+                recent_motion = list(self.motion_data)
                 
-            self.plot_widget.setYRange(min_y - padding, max_y + padding)
+                min_y = min(recent_motion)
+                max_y = max(recent_motion)
+                
+                padding = (max_y - min_y) * 0.1
+                if padding < 1e-6: 
+                    padding = 0.1
+                    
+                self.plot_widget.setYRange(min_y - padding, max_y + padding)
+        except RuntimeError:
+            pass
 
 
     def update_temps(self, mouse, bed, pwm):
-        self.lbl_mouse_temp.setText(f"{mouse:.1f} °C")
-        self.lbl_bed_temp.setText(f"{bed:.1f} °C")
+        try:
+            if not hasattr(self, 'lbl_mouse_temp') or self.lbl_mouse_temp is None:
+                return
+            if not hasattr(self, 'lbl_bed_temp') or self.lbl_bed_temp is None:
+                return
+            self.lbl_mouse_temp.setText(f"{mouse:.1f} °C")
+            self.lbl_bed_temp.setText(f"{bed:.1f} °C")
+        except RuntimeError:
+            pass
 
     def closeEvent(self, event):
         try:
-            self.cam_worker.frame_ready.disconnect()
-            self.cam_worker.bpm_updated.disconnect()
-            self.cam_worker.status_updated.disconnect()
-            self.cam_worker.motion_updated.disconnect()
-            if hasattr(self, 'hw_worker'):
-                self.hw_worker.temps_updated.disconnect()
-        except TypeError:
-            pass 
-
-        self.cam_worker.running = False
-        if hasattr(self, 'hw_worker'):
-            self.hw_worker.running = False
-        
-        self.cam_worker.wait(500)
-        if hasattr(self, 'hw_worker'):
-            self.hw_worker.wait(500)
+            # Disconnect all signals
+            if hasattr(self, 'cam_worker') and self.cam_worker:
+                try:
+                    self.cam_worker.frame_ready.disconnect()
+                    self.cam_worker.bpm_updated.disconnect()
+                    self.cam_worker.status_updated.disconnect()
+                    self.cam_worker.motion_updated.disconnect()
+                except TypeError:
+                    pass
+            
+            if hasattr(self, 'hw_worker') and self.hw_worker:
+                try:
+                    self.hw_worker.temps_updated.disconnect()
+                except TypeError:
+                    pass
+            
+            # Stop threads
+            if hasattr(self, 'cam_worker') and self.cam_worker:
+                self.cam_worker.running = False
+                self.cam_worker.wait(500)
+            
+            if hasattr(self, 'hw_worker') and self.hw_worker:
+                self.hw_worker.running = False
+                self.hw_worker.wait(500)
+        except Exception as e:
+            print(f"Error during closeEvent: {e}")
         
         event.accept()
