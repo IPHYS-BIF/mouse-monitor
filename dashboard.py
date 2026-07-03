@@ -114,6 +114,7 @@ class MouseTrackerDashboard(QMainWindow):
         left_layout.addWidget(graph_card)
 
         left_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        left_widget.setMinimumHeight(400)  # Ensure left side has stable minimum height
         content_layout.addWidget(left_widget, 3)
 
         # --- RIGHT SIDE: Controls (Narrow) ---
@@ -166,6 +167,7 @@ class MouseTrackerDashboard(QMainWindow):
             """)
             self.slider_temp.valueChanged.connect(self.on_target_changed)
             hw_layout.addWidget(self.slider_temp)
+            self.hw_card.setFixedHeight(85)  # Lock temperature card height
             right_col.addWidget(self.hw_card)
 
         # BPM Control Card (compact)
@@ -188,7 +190,7 @@ class MouseTrackerDashboard(QMainWindow):
         self.bpm_slider = RangeSlider(minimum=20, maximum=100)
         self.bpm_slider.setValues(50, 80)
         self.bpm_slider.valueChanged.connect(self.on_bpm_range_changed)
-        self.bpm_slider.setMinimumHeight(26)
+        self.bpm_slider.setFixedHeight(26)  # Fixed slider height
         alarm_layout.addWidget(self.bpm_slider)
 
         self.cb_alarm = QCheckBox("BPM alarm")
@@ -217,6 +219,7 @@ class MouseTrackerDashboard(QMainWindow):
 
         self.btn_manual_roi = QPushButton("Manual ROI")
         self.btn_manual_roi.setFixedHeight(26)
+        self.btn_manual_roi.setMinimumWidth(90)  # Lock width to prevent layout jumping
         btn_stylesheet = """QPushButton {
             background-color: #005db5;
             color: white;
@@ -237,6 +240,7 @@ class MouseTrackerDashboard(QMainWindow):
 
         self.btn_record = QPushButton("Record")
         self.btn_record.setFixedHeight(26)
+        self.btn_record.setMinimumWidth(90)  # Lock width to prevent layout jumping
         self.btn_record.setStyleSheet(btn_stylesheet)
         self.btn_record.clicked.connect(self.toggle_recording)
 
@@ -252,6 +256,7 @@ class MouseTrackerDashboard(QMainWindow):
         self.alarm_max_bpm = 80
         self.alarm_trigger_start = None
 
+        alarm_card.setMinimumHeight(200)  # Lock BPM card to prevent stretching
         right_col.addWidget(alarm_card, 1)
 
         # Telemetry Info Card
@@ -312,9 +317,10 @@ class MouseTrackerDashboard(QMainWindow):
             bed_line.addStretch()
             info_layout.addLayout(bed_line)
 
-        info_card.setFixedHeight(140)
+        info_card.setFixedHeight(140)  # Fixed telemetry card height
         right_col.addWidget(info_card)
 
+        right_widget.setMaximumWidth(210)  # Lock right column width (25% of 800px + margins)
         content_layout.addWidget(right_widget, 1)
         
         # Add content to main vertical layout
