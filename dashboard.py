@@ -33,7 +33,7 @@ import numpy as np
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QSlider, QCheckBox, QSizePolicy)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QFont, QImage
+from PySide6.QtGui import QPixmap, QFont, QImage, QGuiApplication
 
 import pyqtgraph as pg
 
@@ -46,10 +46,14 @@ class MouseTrackerDashboard(QMainWindow):
         super().__init__()
         self.args = args
         self.setWindowTitle("Mouse tracking Dashboard")
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)  # Disable maximize
+        
         if not args.test_mode:
             self.showFullScreen()
         else:
-            self.resize(800, 480)  # RPi 7-inch display
+            # Get primary screen geometry and set fixed size
+            screen = QGuiApplication.primaryScreen().geometry()
+            self.setFixedSize(screen.width(), screen.height())
             
         self.init_ui()
         self.start_threads()
@@ -212,7 +216,7 @@ class MouseTrackerDashboard(QMainWindow):
         alarm_layout.addWidget(self.toggle_yolo)
 
         self.btn_manual_roi = QPushButton("Manual ROI")
-        self.btn_manual_roi.setFixedSize(100, 26)
+        self.btn_manual_roi.setFixedHeight(26)
         btn_stylesheet = """QPushButton {
             background-color: #005db5;
             color: white;
@@ -230,13 +234,19 @@ class MouseTrackerDashboard(QMainWindow):
         }"""
         self.btn_manual_roi.setStyleSheet(btn_stylesheet)
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
-        alarm_layout.addWidget(self.btn_manual_roi)
 
         self.btn_record = QPushButton("Record")
-        self.btn_record.setFixedSize(100, 26)
+        self.btn_record.setFixedHeight(26)
         self.btn_record.setStyleSheet(btn_stylesheet)
         self.btn_record.clicked.connect(self.toggle_recording)
-        alarm_layout.addWidget(self.btn_record)
+
+        # Buttons layout - stretch across card width
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(4)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.addWidget(self.btn_manual_roi, 1)
+        buttons_layout.addWidget(self.btn_record, 1)
+        alarm_layout.addLayout(buttons_layout)
 
         self.alarm_min_bpm = 50
         self.alarm_max_bpm = 80
@@ -401,13 +411,41 @@ class MouseTrackerDashboard(QMainWindow):
         # Disable auto-ROI detection
         self.toggle_yolo.setChecked(False)
         # Change button to dark blue (active state)
-        self.btn_manual_roi.setStyleSheet("background-color: #001f4d; color: white; font-weight: bold; border-radius: 6px;")
+        self.btn_manual_roi.setStyleSheet("""QPushButton {
+            background-color: #001f4d;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            border-radius: 4px;
+            padding: 0px;
+            border: none;
+        }
+        QPushButton:hover {
+            background-color: #000f3d;
+        }
+        QPushButton:pressed {
+            background-color: #00050f;
+        }""")
         # Enable selection on the video label
         self.video_label.enable_selection()
         
     def on_roi_drawn(self, nx, ny, nw, nh):
         # Change button back to normal blue
-        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
+        self.btn_manual_roi.setStyleSheet("""QPushButton {
+            background-color: #005db5;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            border-radius: 4px;
+            padding: 0px;
+            border: none;
+        }
+        QPushButton:hover {
+            background-color: #004a8f;
+        }
+        QPushButton:pressed {
+            background-color: #003d75;
+        }""")
         if hasattr(self, 'cam_worker'):
             self.cam_worker.apply_manual_roi(nx, ny, nw, nh)
 
