@@ -162,7 +162,7 @@ class CameraWorker(QThread):
                                 self.status_updated.emit(
                                     f"Tracking ... ({self._yolo_failed_attempts}/30)")
                 else:
-                    self.status_updated.emit("WAITING FOR MANUAL ROI (Click & Drag)")
+                    self.status_updated.emit("Select manual ROI")
             else:
                 roiState, confidence = updateRoiByTemplate(grayFrame, roiState)
                 if confidence <= 0.9:
