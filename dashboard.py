@@ -49,7 +49,7 @@ class MouseTrackerDashboard(QMainWindow):
         if not args.test_mode:
             self.showFullScreen()
         else:
-            self.resize(1280, 800)
+            self.resize(800, 480)  # RPi 7-inch display
             
         self.init_ui()
         self.start_threads()
@@ -79,6 +79,8 @@ class MouseTrackerDashboard(QMainWindow):
         self.video_label = InteractiveVideoLabel()
         self.video_label.setStyleSheet("border-radius: 8px;")
         self.video_label.setMinimumSize(480, 300)
+        self.video_label.setMaximumHeight(500)  # Prevent excessive growth
+        self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.roi_selected.connect(self.on_roi_drawn)
         left_layout.addWidget(self.video_label, 3)
@@ -96,16 +98,18 @@ class MouseTrackerDashboard(QMainWindow):
         self.plot_widget.setLabel('bottom', "Time", units="s", **{'font-size': '7pt'})
         self.plot_widget.hideAxis('left')
         self.plot_widget.setMouseEnabled(x=False, y=False)
-        self.plot_widget.getPlotItem().setContentsMargins(1, 1, 1, 1)
+        self.plot_widget.getPlotItem().setContentsMargins(1, 1, 1, 0)  # No bottom margin for axis at edge
         self.plot_widget.getPlotItem().setLimits(yMin=0)  # No negative values
         self.motion_data = collections.deque(maxlen=150)
 
         self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#005db5', width=2))
         graph_layout.addWidget(self.plot_widget, 1)
 
-        graph_card.setFixedHeight(140)
+        graph_card.setFixedHeight(110)
+        left_layout.addStretch()  # Push graph to bottom
         left_layout.addWidget(graph_card)
 
+        left_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout.addWidget(left_widget, 4)
 
         # --- RIGHT SIDE: Controls (Narrow) ---
@@ -209,13 +213,13 @@ class MouseTrackerDashboard(QMainWindow):
 
         self.btn_manual_roi = QPushButton("Manual ROI")
         self.btn_manual_roi.setFixedHeight(24)
-        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 8px; border-radius: 4px; padding: 2px;")
+        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
         alarm_layout.addWidget(self.btn_manual_roi)
 
-        self.btn_record = QPushButton("RECORD")
+        self.btn_record = QPushButton("Record")
         self.btn_record.setFixedHeight(24)
-        self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 8px; border-radius: 4px; padding: 2px;")
+        self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
         self.btn_record.clicked.connect(self.toggle_recording)
         alarm_layout.addWidget(self.btn_record)
 
@@ -296,15 +300,15 @@ class MouseTrackerDashboard(QMainWindow):
     def toggle_recording(self):
         if not self.is_recording:
             self.is_recording = True
-            self.btn_record.setText("STOP RECORDING")
-            self.btn_record.setStyleSheet("background-color: #001f4d; color: white; font-weight: bold; border-radius: 6px;")
+            self.btn_record.setText("Stop")
+            self.btn_record.setStyleSheet("background-color: #8b0000; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
             # Filename only - full path handled by camera worker
             filename = f"record_{int(time.time())}.mp4"
             self.cam_worker.start_recording(filename)
         else:
             self.is_recording = False
-            self.btn_record.setText("RECORD SESSION")
-            self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
+            self.btn_record.setText("Record")
+            self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 9px; border-radius: 4px; padding: 0px;")
             self.cam_worker.stop_recording()
 
     def apply_stylesheet(self):
