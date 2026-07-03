@@ -58,52 +58,96 @@ class MouseTrackerDashboard(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
 
-        # --- CONTENT AREA ---
-        content_area = QWidget()
-        content_layout = QVBoxLayout(content_area)
-        content_layout.setContentsMargins(20, 20, 20, 20)
+        # --- LEFT SIDE: Video + Graph ---
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(6)
 
         self.is_recording = False
 
-        # Top row: video feed (left) | cards (right)
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-
-        # --- Video column: anchored top-left ---
-        video_col = QVBoxLayout()
-        video_col.setSpacing(8)
-        video_col.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-
+        # Video feed
         self.video_label = InteractiveVideoLabel()
-        self.video_label.setStyleSheet("border-radius: 10px;")
-        self.video_label.setMinimumSize(640, 480)
+        self.video_label.setStyleSheet("border-radius: 8px;")
+        self.video_label.setMinimumSize(480, 300)
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.roi_selected.connect(self.on_roi_drawn)
-        video_col.addWidget(self.video_label)
-        video_col.addStretch()
+        left_layout.addWidget(self.video_label, 3)
 
-        top_row.addLayout(video_col, 3)
+        # Telemetry Graph — compact
+        graph_card = QFrame()
+        graph_card.setObjectName("Card")
+        graph_layout = QVBoxLayout(graph_card)
+        graph_layout.setContentsMargins(6, 6, 6, 6)
+        graph_layout.setSpacing(4)
 
-        # --- Right column ---
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(6)
+        header_layout.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 10, QFont.Weight.Normal)))
+
+        self.lbl_bpm = QLabel("-- BPM")
+        self.lbl_bpm.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self.lbl_bpm.setStyleSheet("color: #005db5")
+        header_layout.addWidget(self.lbl_bpm)
+        header_layout.addSpacing(12)
+        
+        if not getattr(self.args, 'breath_only', False):
+            header_layout.addWidget(QLabel("Core:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
+            self.lbl_mouse_temp = QLabel("--.- °C")
+            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            self.lbl_mouse_temp.setStyleSheet("color: #005db5")
+            header_layout.addWidget(self.lbl_mouse_temp)
+            header_layout.addSpacing(8)
+            
+            header_layout.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 9, QFont.Weight.Normal)))
+            self.lbl_bed_temp = QLabel("--.- °C")
+            self.lbl_bed_temp.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            self.lbl_bed_temp.setStyleSheet("color: #005db5")
+            header_layout.addWidget(self.lbl_bed_temp)
+        
+        header_layout.addStretch()
+        graph_layout.addLayout(header_layout)
+
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setBackground('#f7f9fb')
+        self.plot_widget.addLegend(offset=(10, 10))
+        self.plot_widget.showAxis('bottom')
+        self.plot_widget.setLabel('bottom', "Time", units="s", **{'font-size': '8pt'})
+        self.plot_widget.hideAxis('left')
+        self.plot_widget.setMouseEnabled(x=False, y=False)
+        self.motion_data = collections.deque(maxlen=150)
+
+        self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#005db5', width=2))
+        graph_layout.addWidget(self.plot_widget)
+
+        graph_card.setFixedHeight(70)
+        left_layout.addWidget(graph_card)
+
+        main_layout.addWidget(left_widget, 4)
+
+        # --- RIGHT SIDE: Controls (Narrow) ---
         right_widget = QWidget()
         right_col = QVBoxLayout(right_widget)
         right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.setSpacing(8)
+        right_col.setSpacing(6)
 
-        # Hardware / PID Control Card (40% height)
+        # Hardware / PID Control Card (compact)
         if not getattr(self.args, 'breath_only', False):
             self.hw_card = QFrame()
             self.hw_card.setObjectName("Card")
             hw_layout = QVBoxLayout(self.hw_card)
-            hw_layout.addWidget(QLabel("Temperature Control", font=QFont("Segoe UI", 16, QFont.Weight.Bold)))
+            hw_layout.setContentsMargins(6, 6, 6, 6)
+            hw_layout.setSpacing(4)
+            hw_layout.addWidget(QLabel("Temp Control", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
 
             temp_header = QHBoxLayout()
-            temp_header.addWidget(QLabel("Core Temperature:", font=QFont("Segoe UI", 14, QFont.Weight.Normal)))
-            self.lbl_target = QLabel("37.5 °C", font=QFont("Segoe UI", 12, QFont.Weight.Bold))
+            temp_header.setSpacing(2)
+            temp_header.addWidget(QLabel("Core:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+            self.lbl_target = QLabel("37.5 °C", font=QFont("Segoe UI", 8, QFont.Weight.Bold))
             self.lbl_target.setStyleSheet("color: #005db5; font-weight: bold;")
-            temp_header.addStretch()
             temp_header.addWidget(self.lbl_target)
             hw_layout.addLayout(temp_header)
 
@@ -113,50 +157,51 @@ class MouseTrackerDashboard(QMainWindow):
             self.slider_temp.setStyleSheet("""
                 QSlider::groove:horizontal {
                     background: #e1e9ee;
-                    height: 4px;
-                    border-radius: 2px;
+                    height: 3px;
+                    border-radius: 1px;
                 }
                 QSlider::sub-page:horizontal {
                     background: #005db5;
-                    border-radius: 2px;
+                    border-radius: 1px;
                 }
                 QSlider::add-page:horizontal {
                     background: #e1e9ee;
-                    border-radius: 2px;
+                    border-radius: 1px;
                 }
                 QSlider::handle:horizontal {
                     background: white;
                     border: 1px solid #ccc;
-                    width: 16px;
-                    height: 16px;
-                    margin: -6px 0;
-                    border-radius: 8px;
+                    width: 12px;
+                    height: 12px;
+                    margin: -4px 0;
+                    border-radius: 6px;
                 }
             """)
             self.slider_temp.valueChanged.connect(self.on_target_changed)
-
             hw_layout.addWidget(self.slider_temp)
-            hw_layout.addStretch()
-            right_col.addWidget(self.hw_card, 40)
+            right_col.addWidget(self.hw_card)
 
-        # Alarm & Filtering Card (60% height) with controls anchored to bottom
+        # BPM Control Card (compact)
         alarm_card = QFrame()
         alarm_card.setObjectName("Card")
         alarm_layout = QVBoxLayout(alarm_card)
+        alarm_layout.setContentsMargins(6, 6, 6, 6)
+        alarm_layout.setSpacing(4)
 
-        alarm_layout.addWidget(QLabel("BPM Control", font=QFont("Segoe UI", 16, QFont.Weight.Bold)))
+        alarm_layout.addWidget(QLabel("BPM Control", font=QFont("Segoe UI", 9, QFont.Weight.Bold)))
 
         filter_header = QHBoxLayout()
-        filter_header.addWidget(QLabel("Alarm Range:", font=QFont("Segoe UI", 14, QFont.Weight.Normal)))
-        self.lbl_bpm_range = QLabel("50 - 80 BPM", font=QFont("Segoe UI", 12, QFont.Weight.Bold))
+        filter_header.setSpacing(2)
+        filter_header.addWidget(QLabel("Range:", font=QFont("Segoe UI", 8, QFont.Weight.Normal)))
+        self.lbl_bpm_range = QLabel("50-80", font=QFont("Segoe UI", 8, QFont.Weight.Bold))
         self.lbl_bpm_range.setStyleSheet("color: #005db5; font-weight: bold;")
-        filter_header.addStretch()
         filter_header.addWidget(self.lbl_bpm_range)
         alarm_layout.addLayout(filter_header)
 
         self.bpm_slider = RangeSlider(minimum=20, maximum=100)
         self.bpm_slider.setValues(50, 80)
         self.bpm_slider.valueChanged.connect(self.on_bpm_range_changed)
+        self.bpm_slider.setMinimumHeight(24)
         alarm_layout.addWidget(self.bpm_slider)
 
         self.cb_alarm = QCheckBox("BPM alarm")
@@ -164,34 +209,34 @@ class MouseTrackerDashboard(QMainWindow):
             QCheckBox {
                 font-weight: bold;
                 color: #005db5;
+                font-size: 9px;
             }
         """)
         self.cb_alarm.setChecked(True)
         alarm_layout.addWidget(self.cb_alarm)
 
-        # Push controls to the bottom
-        alarm_layout.addStretch()
-
-        self.toggle_yolo = QCheckBox("Auto-Detect ROI")
+        # ROI controls (compact)
+        self.toggle_yolo = QCheckBox("Auto ROI")
         self.toggle_yolo.setChecked(True)
         self.toggle_yolo.setStyleSheet("""
             QCheckBox {
                 font-weight: bold;
                 color: #005db5;
+                font-size: 9px;
             }
         """)
         self.toggle_yolo.toggled.connect(self.on_yolo_toggled)
         alarm_layout.addWidget(self.toggle_yolo)
 
-        self.btn_manual_roi = QPushButton("Draw Manual ROI")
-        self.btn_manual_roi.setFixedHeight(30)
-        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
+        self.btn_manual_roi = QPushButton("Manual ROI")
+        self.btn_manual_roi.setFixedHeight(24)
+        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 8px; border-radius: 4px; padding: 2px;")
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
         alarm_layout.addWidget(self.btn_manual_roi)
 
-        self.btn_record = QPushButton("RECORD SESSION")
-        self.btn_record.setFixedHeight(30)
-        self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
+        self.btn_record = QPushButton("RECORD")
+        self.btn_record.setFixedHeight(24)
+        self.btn_record.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; font-size: 8px; border-radius: 4px; padding: 2px;")
         self.btn_record.clicked.connect(self.toggle_recording)
         alarm_layout.addWidget(self.btn_record)
 
@@ -199,66 +244,36 @@ class MouseTrackerDashboard(QMainWindow):
         self.alarm_max_bpm = 80
         self.alarm_trigger_start = None
 
-        right_col.addWidget(alarm_card, 60)
-        top_row.addWidget(right_widget, 1)
-        content_layout.addLayout(top_row, 1)
+        right_col.addWidget(alarm_card)
+        right_col.addStretch()
 
-        # Telemetry Graph — full width
-        graph_card = QFrame()
-        graph_card.setObjectName("Card")
-        graph_layout = QVBoxLayout(graph_card)
-
-        header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("Breathing:", font=QFont("Segoe UI", 14, QFont.Weight.Normal)))
-
-        self.lbl_bpm = QLabel("-- BPM")
-        self.lbl_bpm.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        self.lbl_bpm.setStyleSheet("color: #005db5")
-
-        header_layout.addWidget(self.lbl_bpm)
-        header_layout.addSpacing(40)
-        
-        if not getattr(self.args, 'breath_only', False):
-            header_layout.addWidget(QLabel("Core:", font=QFont("Segoe UI", 14, QFont.Weight.Normal)))
-            self.lbl_mouse_temp = QLabel("--.- °C")
-            self.lbl_mouse_temp.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-            self.lbl_mouse_temp.setStyleSheet("color: #005db5")
-            header_layout.addWidget(self.lbl_mouse_temp)
-            header_layout.addSpacing(40)
-            
-            header_layout.addWidget(QLabel("Bed:", font=QFont("Segoe UI", 14, QFont.Weight.Normal)))
-            self.lbl_bed_temp = QLabel("--.- °C")
-            self.lbl_bed_temp.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-            self.lbl_bed_temp.setStyleSheet("color: #005db5")
-            header_layout.addWidget(self.lbl_bed_temp)
-        
-        header_layout.addStretch()
-        graph_layout.addLayout(header_layout)
-
-        self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setBackground('#f7f9fb')
-        self.plot_widget.addLegend()
-        self.plot_widget.showAxis('bottom')
-        self.plot_widget.setLabel('bottom', "Time", units="s")
-        self.plot_widget.hideAxis('left')
-        self.plot_widget.setMouseEnabled(x=False, y=False)
-        self.motion_data = collections.deque(maxlen=150)
-
-        self.curve = self.plot_widget.plot(name="Motion", pen=pg.mkPen(color='#005db5', width=2))
-        graph_layout.addWidget(self.plot_widget)
-
-        graph_card.setMinimumHeight(160)
-        graph_card.setMaximumHeight(300)
-        content_layout.addWidget(graph_card)
+        main_layout.addWidget(right_widget, 1)
 
         # Info bar — full width
         self.lbl_status = QLabel("System Initializing...")
         self.lbl_status.setObjectName("InfoBar")
-        self.lbl_status.setFixedHeight(34)
+        self.lbl_status.setFixedHeight(28)
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        content_layout.addWidget(self.lbl_status)
-
-        main_layout.addWidget(content_area)
+        self.lbl_status.setStyleSheet("font-size: 9px;")
+        
+        # Create a bottom bar container
+        bottom_layout = QVBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(0)
+        bottom_layout.addWidget(self.lbl_status)
+        
+        bottom_widget = QWidget()
+        bottom_widget.setLayout(bottom_layout)
+        
+        # Add bottom to main layout
+        main_widget = QWidget()
+        main_widget_layout = QVBoxLayout(main_widget)
+        main_widget_layout.setContentsMargins(0, 0, 0, 0)
+        main_widget_layout.setSpacing(0)
+        main_widget_layout.addLayout(main_layout, 1)
+        main_widget_layout.addWidget(bottom_widget)
+        
+        self.setCentralWidget(main_widget)
 
         self.apply_stylesheet()
 
