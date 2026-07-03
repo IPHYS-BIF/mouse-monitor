@@ -186,7 +186,6 @@ class MouseTrackerDashboard(QMainWindow):
         self.btn_manual_roi = QPushButton("Draw Manual ROI")
         self.btn_manual_roi.setFixedHeight(30)
         self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
-        self.btn_manual_roi.setEnabled(False)
         self.btn_manual_roi.clicked.connect(self.activate_drawing_mode)
         alarm_layout.addWidget(self.btn_manual_roi)
 
@@ -267,7 +266,7 @@ class MouseTrackerDashboard(QMainWindow):
         if not self.is_recording:
             self.is_recording = True
             self.btn_record.setText("STOP RECORDING")
-            self.btn_record.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; border-radius: 6px;")
+            self.btn_record.setStyleSheet("background-color: #001f4d; color: white; font-weight: bold; border-radius: 6px;")
             # Filename only - full path handled by camera worker
             filename = f"record_{int(time.time())}.mp4"
             self.cam_worker.start_recording(filename)
@@ -342,15 +341,21 @@ class MouseTrackerDashboard(QMainWindow):
 
     def on_yolo_toggled(self, checked):
         self.cam_worker.set_use_yolo(checked)
-        self.btn_manual_roi.setEnabled(not checked)
         # When YOLO is re-enabled, reset and restart detection
         if checked:
             self.cam_worker.reset_roi()
         
     def activate_drawing_mode(self):
+        # Disable auto-ROI detection
+        self.toggle_yolo.setChecked(False)
+        # Change button to dark blue (active state)
+        self.btn_manual_roi.setStyleSheet("background-color: #001f4d; color: white; font-weight: bold; border-radius: 6px;")
+        # Enable selection on the video label
         self.video_label.enable_selection()
         
     def on_roi_drawn(self, nx, ny, nw, nh):
+        # Change button back to normal blue
+        self.btn_manual_roi.setStyleSheet("background-color: #005db5; color: white; font-weight: bold; border-radius: 6px;")
         if hasattr(self, 'cam_worker'):
             self.cam_worker.apply_manual_roi(nx, ny, nw, nh)
 

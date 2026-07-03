@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 from dataclasses import dataclass
 
 YOLO_MODEL = None
@@ -24,8 +25,7 @@ def autoDetectRoiYolo(frameBgr: np.ndarray) -> RoiState | None:
     if YOLO_MODEL is None:
         try:
             from ultralytics import YOLO
-            import os
-            model_path = 'data\\model\\best_3.pt'
+            model_path = os.path.join('data', 'model', 'best_3.pt')
             if not os.path.exists(model_path):
                 print(f"WARNING: Custom model not found at '{model_path}'. "
                       "Train the model first using tools/train_yolo_model.py.")
