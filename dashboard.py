@@ -268,6 +268,7 @@ class MouseTrackerDashboard(QMainWindow):
             self.is_recording = True
             self.btn_record.setText("STOP RECORDING")
             self.btn_record.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; border-radius: 6px;")
+            # Filename only - full path handled by camera worker
             filename = f"record_{int(time.time())}.mp4"
             self.cam_worker.start_recording(filename)
         else:

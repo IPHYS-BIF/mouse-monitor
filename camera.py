@@ -1,5 +1,7 @@
 import cv2
 import time
+import os
+import shutil
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
@@ -29,8 +31,27 @@ class CameraWorker(QThread):
         self._yolo_failed_attempts = 0
 
     def start_recording(self, filename):
-        self.recording_filename = filename
+        """Start recording. Creates data/video directory and checks disk space first."""
+        # Create data/video directory if it doesn't exist
+        video_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "video")
+        os.makedirs(video_dir, exist_ok=True)
+        
+        # Check available disk space (require at least 100MB free)
+        try:
+            stat = shutil.disk_usage(video_dir)
+            free_space_mb = stat.free / (1024 * 1024)
+            min_space_mb = 100
+            if free_space_mb < min_space_mb:
+                print(f"Insufficient disk space: {free_space_mb:.1f}MB free, need {min_space_mb}MB")
+                self.status_updated.emit(f"ERROR: Only {free_space_mb:.0f}MB free (need {min_space_mb}MB)")
+                return
+        except Exception as e:
+            print(f"Warning: Could not check disk space: {e}")
+        
+        # Set full path for recording file
+        self.recording_filename = os.path.join(video_dir, filename)
         self.recording_active = True
+        self.status_updated.emit(f"RECORDING to {filename}")
 
     def stop_recording(self):
         self.recording_active = False
