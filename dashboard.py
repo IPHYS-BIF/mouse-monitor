@@ -202,6 +202,7 @@ class MouseTrackerDashboard(QMainWindow):
             }
         """)
         self.cb_alarm.setChecked(True)
+        self.cb_alarm.toggled.connect(self.on_bpm_alarm_toggled)  # Add signal handler
         alarm_layout.addWidget(self.cb_alarm)
 
         # ROI controls (compact)
@@ -414,6 +415,11 @@ class MouseTrackerDashboard(QMainWindow):
         # When YOLO is re-enabled, reset and restart detection
         if checked:
             self.cam_worker.reset_roi()
+    
+    def on_bpm_alarm_toggled(self, checked):
+        """Handle BPM alarm checkbox state changes"""
+        # Checkbox state is maintained automatically by Qt
+        pass
         
     def activate_drawing_mode(self):
         # Disable auto-ROI detection
