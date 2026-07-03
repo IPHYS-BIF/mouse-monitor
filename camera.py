@@ -90,7 +90,7 @@ class CameraWorker(QThread):
                 estimator = AdvancedBreathEstimator(method=method, breathMinBpm=self.min_bpm, breathMaxBpm=self.max_bpm)
                 self.motion_updated.emit(0.0)
                 self.bpm_updated.emit(float('nan'))
-                self.status_updated.emit("SEARCHING FOR TARGET...")
+                self.status_updated.emit("Tracking...")
                 self._roi_state_pending = False  # Mark reset as processed
             
             ret, frame = capture.read()
@@ -160,7 +160,7 @@ class CameraWorker(QThread):
                                     "MODEL NOT FOUND or no detection — Draw ROI manually")
                             else:
                                 self.status_updated.emit(
-                                    f"SEARCHING FOR TARGET... ({self._yolo_failed_attempts}/30)")
+                                    f"Tracking ... ({self._yolo_failed_attempts}/30)")
                 else:
                     self.status_updated.emit("WAITING FOR MANUAL ROI (Click & Drag)")
             else:

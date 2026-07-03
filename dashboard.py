@@ -244,12 +244,14 @@ class MouseTrackerDashboard(QMainWindow):
         self.btn_record.setStyleSheet(btn_stylesheet)
         self.btn_record.clicked.connect(self.toggle_recording)
 
-        # Buttons layout - stretch across card width
+        # Buttons layout - buttons with gap between them
         buttons_layout = QHBoxLayout()
-        buttons_layout.setSpacing(4)
+        buttons_layout.setSpacing(8)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.addWidget(self.btn_manual_roi, 1)
-        buttons_layout.addWidget(self.btn_record, 1)
+        buttons_layout.addStretch()  # Left padding
+        buttons_layout.addWidget(self.btn_manual_roi)  # No stretch - fixed width
+        buttons_layout.addWidget(self.btn_record)      # No stretch - fixed width
+        buttons_layout.addStretch()  # Right padding
         alarm_layout.addLayout(buttons_layout)
 
         self.alarm_min_bpm = 50
