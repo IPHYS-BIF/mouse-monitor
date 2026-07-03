@@ -329,7 +329,7 @@ class MouseTrackerDashboard(QMainWindow):
                     try:
                         import RPi.GPIO as GPIO
                         GPIO.output(17, GPIO.HIGH)
-                        time.sleep(0.1)  # 100ms pulse
+                        time.sleep(0.2)  # 100ms pulse
                         GPIO.output(17, GPIO.LOW)
                         print("GPIO buzzer triggered.")
                     except Exception as e:
