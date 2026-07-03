@@ -331,6 +331,7 @@ class MouseTrackerDashboard(QMainWindow):
                         GPIO.output(17, GPIO.HIGH)
                         time.sleep(0.1)  # 100ms pulse
                         GPIO.output(17, GPIO.LOW)
+                        print("GPIO buzzer triggered.")
                     except Exception as e:
                         print(f"GPIO error: {e}")
                 elif platform.system() == "Windows":
